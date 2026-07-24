@@ -431,6 +431,16 @@ geo_gap = _ensure_geo_gap()  # approval gap by tract minority x DTI band
 disparity = read("dash_approval_disparity.csv")
 scatter = read("dash_scatter.csv", required=True)
 denial = read("dash_denial_reasons.csv")
+appdeny_full = read(
+    "hmda_approve_deny.csv"
+)  # every decisioned application with raw/binned fields, for the What-If combined filter
+if appdeny_full is not None and "target_approved" not in appdeny_full.columns:
+    if "action_taken" in appdeny_full.columns:
+        appdeny_full["target_approved"] = (
+            appdeny_full["action_taken"] == "Originated"
+        ).astype(int)
+    else:
+        appdeny_full = None
 
 # Which of the 28 raw candidates also survived the improvement filter into the 11-rule
 # business set - shown as a column on the "all candidates" table so the two views are
@@ -1916,13 +1926,15 @@ def compute_base_approval() -> float:
 
 BASE_APPROVAL = compute_base_approval()
 
-# Extra applicant/property/tract fields for context only: none of them appear in any
-# mined rule antecedent, so they cannot join the match lookup above. Deliberately
-# excludes derived_race / derived_ethnicity / derived_sex / tract_minority_cat: those
-# already showed no predictive lift beyond DTI on the Rules tab, and a per-individual
-# "pick your race, see your approval odds" widget risks reading as normalizing
-# demographic scoring even when labeled "context only". That gap is handled properly,
-# with the right caveats, on the Fairness tab instead.
+# Extra applicant/property/tract fields folded into the combined profile match (see
+# combined_match() below). None of them appear in any mined rule antecedent (Rules tab),
+# so they don't affect the curated rule set -- but they do narrow the direct historical
+# lookup that produces the combined approval rate. Deliberately excludes derived_race /
+# derived_ethnicity / derived_sex / tract_minority_cat: those already showed no
+# predictive lift beyond DTI on the Rules tab, and a per-individual "pick your race, see
+# your approval odds" widget risks reading as normalizing demographic scoring even when
+# labeled "context only". That gap is handled properly, with the right caveats, on the
+# Fairness tab instead.
 CONTEXT_FIELDS = [
     ("applicant_age", "Applicant age", "slider", AGE_ORDER, "35-44"),
     ("occupancy_type", "Occupancy type", "dropdown", None, None),
@@ -1944,6 +1956,10 @@ CONTEXT_FIELDS = [
         "Middle_Income",
     ),
 ]
+
+# One combined applicant profile: every control across both lists renders together and
+# feeds the same combined_match() filter, rather than living in two disconnected panels.
+PROFILE_FIELDS = WHATIF_FIELDS + CONTEXT_FIELDS
 
 
 def _dropdown_options(field):
@@ -2021,80 +2037,35 @@ def decode_control(kind, order_or_values, default, raw):
     return raw or ""
 
 
-def context_lookup(field, value):
-    if not value or context_fields is None:
-        return None
-    row = context_fields[
-        (context_fields["field"] == field) & (context_fields["value"] == value)
-    ]
-    if not len(row):
-        return None
-    r = row.iloc[0]
-    return float(r["approval_rate"]), int(r["n"])
+def combined_match(selected: list[tuple[str, str, str]]):
+    """Direct empirical filter across every historical decisioned application
+    (hmda_approve_deny.csv), using every currently-selected profile field at once.
 
+    This is deliberately not a predictive model and not a rule lookup: it is a
+    real conditional approval rate among applications that match every selected
+    attribute simultaneously, which is what lets the combined profile (loan
+    terms + the former "more context" fields together) produce one number
+    instead of two disconnected ones.
 
-def whatif_match(selected: dict[str, str]):
-    """Match selected categories against curated association rules.
-
-    This is deliberately not a predictive model. Among compatible rules, the most
-    specific rule wins; lift, confidence, and support only break ties. The returned
-    explanation says exactly how much of the selected profile the rule actually used.
+    Returns (approval_rate_pct, n_matched, active) where active is the list of
+    (label, value) pairs that are actually filtering right now.
     """
-    chosen = {f"{field}={value}" for field, value in selected.items() if value}
-    if rules is None or not len(rules) or not chosen:
-        base = BASE_APPROVAL if np.isfinite(BASE_APPROVAL) else 0.0
-        return (
-            None,
-            base,
-            "No usable rule is available. Showing the best available portfolio base rate.",
-        )
+    active = [(label, value) for _, label, value in selected if value]
+    base = BASE_APPROVAL if np.isfinite(BASE_APPROVAL) else 0.0
+    if appdeny_full is None or not active:
+        return base, 0, active
 
-    candidates: list[tuple[tuple[float, ...], pd.Series, set[str]]] = []
-    for _, row in rules.iterrows():
-        items = {
-            item.strip()
-            for item in str(row.get("antecedent", "")).split(", ")
-            if item.strip()
-        }
-        if not items or not items.issubset(chosen):
+    mask = pd.Series(True, index=appdeny_full.index)
+    for field, _, value in selected:
+        if not value or field not in appdeny_full.columns:
             continue
-        score = (
-            float(len(items)),
-            float(row.get("lift", 0) or 0),
-            float(row.get("confidence", 0) or 0),
-            float(row.get("n_matched", 0) or 0),
-        )
-        candidates.append((score, row, items))
+        mask &= appdeny_full[field].astype(str) == str(value)
 
-    if not candidates:
-        base = BASE_APPROVAL if np.isfinite(BASE_APPROVAL) else 0.0
-        return (
-            None,
-            base,
-            (
-                "No curated association rule matches the selected categories. "
-                "The gauge therefore shows the portfolio base rate, not an individual forecast."
-            ),
-        )
-
-    _, best, used_items = max(candidates, key=lambda candidate: candidate[0])
-    confidence = float(best.get("confidence", 0))
-    historical_approval = (
-        confidence * 100 if best.get("then") == "Originated" else (1 - confidence) * 100
-    )
-    historical_approval = float(np.clip(historical_approval, 0, 100))
-    unused_count = len(chosen - used_items)
-    note = (
-        f"Matched {len(used_items)} of {len(chosen)} selected attributes to: "
-        f"{best.get('if_readable', best.get('antecedent', 'rule'))} → {best.get('then', 'outcome')}. "
-        f"The rule occurred in {int(best.get('n_matched', 0)):,} historical applications, "
-        f"with {confidence * 100:.1f}% confidence and {float(best.get('lift', 0)):.2f}× lift."
-    )
-    if unused_count:
-        note += (
-            f" The other {unused_count} selected attributes were not part of this rule."
-        )
-    return best, historical_approval, note
+    n = int(mask.sum())
+    if n == 0:
+        return base, 0, active
+    rate = float(appdeny_full.loc[mask, "target_approved"].mean() * 100)
+    return rate, n, active
 
 
 def data_health_banner():
@@ -2958,8 +2929,7 @@ def render(tab):
         controls = [
             render_control(field, label, kind, order, default, "wi")
             for field, label, kind, order, default in WHATIF_FIELDS
-        ]
-        context_controls = [
+        ] + [
             render_control(field, label, kind, order, default, "ctx")
             for field, label, kind, order, default in CONTEXT_FIELDS
         ]
@@ -2978,11 +2948,12 @@ def render(tab):
                             },
                         ),
                         html.Div(
-                            "Sliders cover the field's whole range and always have a value (defaulting to the "
-                            'most common band); dropdowns and toggles default to "not specified". This looks '
-                            "up the closest matching historical pattern from the Rules tab. It is a lookup "
-                            "against real historical patterns, not a trained predictive model, and it is not a "
-                            "guarantee for any individual applicant.",
+                            "Sliders cover each field's whole range and always have a value (defaulting to "
+                            'the most common band); dropdowns and toggles default to "not specified". The '
+                            "result below is the real historical approval rate among applications that match "
+                            "every attribute selected here at once. It is a direct lookup against historical "
+                            "applications, not a trained predictive model, and it is not a guarantee for any "
+                            "individual applicant.",
                             style={
                                 "fontSize": "11px",
                                 "color": MUTE,
@@ -3005,26 +2976,9 @@ def render(tab):
                         html.Div(id="wi-term-detail", style={"marginTop": "10px"}),
                     ],
                     sub="HMDA 2022 has no calendar date to filter on (activity_year is constant), so loan "
-                    "duration stands in as the closest thing to a time axis. Shown for context only: no "
-                    "mined rule uses it, so it does not change the match above. 25-year loans are the one "
-                    "exception worth knowing: they dip to 56.2% approval, the highest high-DTI share of any band.",
-                ),
-                panel(
-                    "More context",
-                    [
-                        html.Div(
-                            context_controls,
-                            style={
-                                "display": "flex",
-                                "gap": "20px",
-                                "flexWrap": "wrap",
-                            },
-                        ),
-                        html.Div(id="wi-context-result", style={"marginTop": "10px"}),
-                    ],
-                    sub="Applicant/property/tract attributes that were mined but never survived the improvement "
-                    "filter (Rules tab): they don't add information beyond the profile above, so, like loan "
-                    "duration, they're shown as historical context only and never change the match result.",
+                    "duration stands in as the closest thing to a time axis. Shown for context only: it is "
+                    "not part of the combined profile above. 25-year loans are the one exception worth "
+                    "knowing: they dip to 56.2% approval, the highest high-DTI share of any band.",
                 ),
                 html.Div(id="whatif-result"),
             ]
@@ -3305,56 +3259,36 @@ def _cb_wi_term(idx):
 
 
 @app.callback(
-    Output("wi-context-result", "children"),
-    [Input(f"ctx-{field}", "value") for field, _, _, _, _ in CONTEXT_FIELDS],
-)
-def _cb_wi_context(*values):
-    chips = []
-    for (field, label, kind, order, default), raw in zip(CONTEXT_FIELDS, values):
-        value = decode_control(kind, order, default, raw)
-        hit = context_lookup(field, value)
-        if hit is None:
-            continue
-        appr, n = hit
-        color = GREEN if appr >= 70 else (AMBER if appr >= 50 else RED)
-        chips.append(
-            html.Div(
-                [
-                    html.Span(
-                        f"{label}: {value}", style={"fontSize": "11px", "color": MUTE}
-                    ),
-                    html.Div(
-                        f"{appr:.1f}% approved",
-                        style={"fontSize": "16px", "fontWeight": "800", "color": color},
-                    ),
-                    html.Div(f"n={n:,}", style={"fontSize": "10px", "color": MUTE}),
-                ],
-                style={
-                    "background": BG,
-                    "borderRadius": "8px",
-                    "padding": "8px 12px",
-                    "minWidth": "140px",
-                },
-            )
-        )
-    if not chips:
-        return html.Div(
-            "Pick any attribute above to see its historical approval rate.",
-            style={"fontSize": "11px", "color": MUTE},
-        )
-    return html.Div(chips, style={"display": "flex", "gap": "10px", "flexWrap": "wrap"})
-
-
-@app.callback(
     Output("whatif-result", "children"),
-    [Input(f"wi-{field}", "value") for field, _, _, _, _ in WHATIF_FIELDS],
+    [Input(f"wi-{field}", "value") for field, _, _, _, _ in WHATIF_FIELDS]
+    + [Input(f"ctx-{field}", "value") for field, _, _, _, _ in CONTEXT_FIELDS],
 )
 def _cb_whatif(*values):
-    selected = {}
-    for (field, label, kind, order, default), raw in zip(WHATIF_FIELDS, values):
-        selected[field] = decode_control(kind, order, default, raw)
-    best, appr, note = whatif_match(selected)
-    outcome_label = "Historical approval share"
+    n_wi = len(WHATIF_FIELDS)
+    selected = []
+    for (field, label, kind, order, default), raw in zip(WHATIF_FIELDS, values[:n_wi]):
+        selected.append((field, label, decode_control(kind, order, default, raw)))
+    for (field, label, kind, order, default), raw in zip(CONTEXT_FIELDS, values[n_wi:]):
+        selected.append((field, label, decode_control(kind, order, default, raw)))
+
+    appr, n, active = combined_match(selected)
+    if not active:
+        note = "Pick any attribute above to see the historical approval rate for that profile."
+    elif n == 0:
+        note = (
+            f"No historical applications match all {len(active)} selected attributes together "
+            "(the combination is too specific or unobserved in this sample). Showing the "
+            "overall portfolio approval rate instead."
+        )
+    else:
+        detail = "; ".join(f"{label}={value}" for label, value in active)
+        note = (
+            f"{n:,} historical applications match all {len(active)} selected attributes "
+            f"({detail})."
+        )
+        if n < 30:
+            note += f" Caution: only {n:,} matching applications -- treat this rate as noisy."
+    outcome_label = "Combined historical approval rate"
     return panel(
         "Result",
         [
@@ -3375,7 +3309,7 @@ def _cb_whatif(*values):
                                 },
                             ),
                             html.Div(
-                                "Association-rule lookup only. Do not use this result to approve, deny, price, or rank an individual application.",
+                                "Direct historical-application lookup only. Do not use this result to approve, deny, price, or rank an individual application.",
                                 style={
                                     "fontSize": "11px",
                                     "color": RED,
