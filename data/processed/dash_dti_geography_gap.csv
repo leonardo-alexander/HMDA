@@ -1,0 +1,5 @@
+dti_group,low_minority_approval_pct,majority_minority_approval_pct,gap_pp,n_low_minority,n_majority_minority
+Low(<36%),85.5,73.4,12.1,9178,1635
+Mid(36-50%),86.7,80.3,6.4,9043,2781
+High(>50%),34.8,33.0,1.8,2706,1246
+Unknown/Exempt,74.6,66.3,8.3,1917,624

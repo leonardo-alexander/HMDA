@@ -270,10 +270,13 @@ def audit_feature_selection(comb):
     return feature_selection_audit, eligible_feature_ranking, process_stage_diagnostics
 
 
-def export_phase1(df, approve_deny, df_denials, comb, out_dir):
+def export_phase1(df, approve_deny, df_denials, comb, out_dir, table_dir=None):
+    """Writes the Phase 1 interim tables to out_dir (data/interim), and the
+    feature-ranking table to table_dir (results/tables) if given, else out_dir."""
     out_dir = Path(out_dir)
+    table_dir = Path(table_dir) if table_dir is not None else out_dir
     df.to_csv(out_dir / "hmda_clean.csv", index=False)
     approve_deny.to_csv(out_dir / "hmda_approve_deny.csv", index=False)
-    comb.to_csv(out_dir / "feature_ranking_combined.csv", index=False)
+    comb.to_csv(table_dir / "feature_ranking_combined.csv", index=False)
     if len(df_denials):
         df_denials.to_csv(out_dir / "hmda_denials.csv", index=False)
