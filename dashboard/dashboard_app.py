@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -7,6 +9,12 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import networkx as nx
 from dash import Dash, dcc, html, Input, Output, dash_table, no_update
+
+# Data files live one level up, split into interim (Phase 1 exports) and processed
+# (Phase 2-4 exports + dashboard aggregates). Checked in this order since most reads
+# hit processed/; interim/ only holds the 3 raw hmda_*.csv files.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIRS = [_PROJECT_ROOT / "data" / "processed", _PROJECT_ROOT / "data" / "interim"]
 
 # ============================================================ DESIGN TOKENS
 # Colours are the validated data-viz reference palette (categorical hues cleared the
@@ -55,10 +63,14 @@ def blank(msg="Run the notebook first: data file not found."):
     return f
 
 def read(path, **kw):
-    try:
-        return pd.read_csv(path, **kw)
-    except Exception:
-        return None
+    for d in DATA_DIRS:
+        candidate = d / path
+        if candidate.exists():
+            try:
+                return pd.read_csv(candidate, **kw)
+            except Exception:
+                return None
+    return None
 
 # ============================================================ SCHEMA NORMALIZATION
 # The notebook's own Phase 3/4 export cells (HMDA.ipynb) write a minimal schema
