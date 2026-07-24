@@ -143,3 +143,8 @@ LEAKAGE = ["interest_rate", "rate_spread", "total_loan_costs", "total_points_and
 POST_DECISION = ["interest_rate", "rate_spread", "total_loan_costs", "total_points_and_fees",
                  "origination_charges", "discount_points", "lender_credits", "interest_rate_band",
                  "purchaser_type", "hoepa_status"]
+
+# --- Phase 3/5: DTI band -> coarse group, used for the geography x DTI fairness crosstab ---
+
+DTI_GRP = {"<20%": "Low(<36%)", "20%-<30%": "Low(<36%)", "30%-<36%": "Low(<36%)",
+          "36%-<43%": "Mid(36-50%)", "43%-<50%": "Mid(36-50%)", "50%-60%": "High(>50%)", ">60%": "High(>50%)"}
