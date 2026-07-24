@@ -1,0 +1,16 @@
+,income,loan_amount,property_value,combined_loan_to_value_ratio,loan_term,loan_purpose,occupancy_type,total_units,action_taken,anomaly_votes,iso_score,verdict,evidence
+61411,45173.0,20005000,46505000.0,43.011,360.0,CashOut_Refinance,Principal_Residence,1,Originated,5,0.7678009392470375,RARE BUT VALID,"jumbo loan $20,005,000"
+60075,3472.0,8005000,11505000.0,69.565,360.0,Home_Purchase,Principal_Residence,1,Preapproval_Approved_NotAccepted,5,0.7588357717701771,RARE BUT VALID,"jumbo loan $8,005,000"
+31067,95.0,40485000,116805000.0,34.66,36.0,Refinance,Investment,50-99,Originated,5,0.7567459567082616,RARE BUT VALID,multi-unit (50-99) / investment profile
+7727,758.0,1005000,9205000.0,40.92,300.0,Other,Principal_Residence,1,Originated,5,0.7028862674295315,RARE BUT VALID,"manual review: subordinate lien of $1,005,000 on a $9,205,000 CA principal residence; CLTV 40.9% x $9.2M = $3.77M total liens >= this loan, so a senior first lien exists and the figures reconcile; income $758k/yr supports the debt -> high-net-worth equity draw, not a data error"
+99240,1739.0,3005000,1295000.0,233.0,24.0,Home_Improvement,Investment,2,Originated,5,0.7015259891769191,RARE BUT VALID,multi-unit (2) / investment profile
+50530,265.0,415000,2645000.0,15.7197,36.0,CashOut_Refinance,Investment,1,Originated,5,0.6921151914453328,RARE BUT VALID,multi-unit (1) / investment profile
+75518,95.0,805000,3545000.0,22.6,48.0,CashOut_Refinance,Investment,100-149,Originated,5,0.6472039118980337,RARE BUT VALID,multi-unit (100-149) / investment profile
+64299,1022.0,105000,795000.0,12.66,36.0,Home_Purchase,Investment,1,Originated,5,0.6251284535380713,RARE BUT VALID,multi-unit (1) / investment profile
+95313,165.0,35000,2495000.0,19.94,60.0,Home_Improvement,Principal_Residence,1,Denied,5,0.6216950835840415,RARE BUT VALID,"manual review: $35,000 home-improvement second lien on a $2,495,000 CA home; CLTV 19.9% x $2.5M = $498k total liens >= this loan; every magnitude is plausible -> flagged only for the tiny-loan-on-expensive-home contrast (and it was denied anyway)"
+43427,95.0,955000,225000.0,4.19,360.0,Other,Investment,1,Originated,5,0.6148199289460216,RARE BUT VALID,multi-unit (1) / investment profile
+81961,1868.0,8025000,10705000.0,75.0,180.0,Home_Purchase,Principal_Residence,1,Originated,4,0.7623175084512036,RARE BUT VALID,"jumbo loan $8,025,000"
+81706,95.0,140905000,219605000.0,64.2,84.0,Refinance,Investment,>149,Originated,4,0.7549022236045348,RARE BUT VALID,multi-unit (>149) / investment profile
+23141,95.0,41905000,75105000.0,55.79,36.0,Home_Purchase,Investment,>149,Originated,4,0.7494171810443839,RARE BUT VALID,multi-unit (>149) / investment profile
+8102,1082.0,2505000,9305000.0,26.882,360.0,CashOut_Refinance,Second_Residence,1,Originated,4,0.7370497133587091,RARE BUT VALID,"manual review: $2,505,000 cash-out first-lien refinance of a $9,305,000 NY second residence; CLTV 26.9% x $9.3M = $2.50M = the loan itself, i.e. arithmetically self-consistent; income $1.08M at DTI 36%-<43% fits a jumbo borrower"
+6925,95.0,23705000,46635000.0,50.95,204.0,Home_Improvement,Investment,>149,Originated,4,0.7335650071579947,RARE BUT VALID,multi-unit (>149) / investment profile

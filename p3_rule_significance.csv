@@ -1,0 +1,11 @@
+antecedent,consequent,n_matched,rate,ci95,lift,chi2,p_value
+"debt_to_income_ratio=>60%, lien_status=Subordinate_Lien",decision=Denied,1555,0.94,"[92.7%, 95.0%]",4.06,4487.6,0.0e+00
+"debt_to_income_ratio=>60%, loan_type=Conventional",decision=Denied,3562,0.933,"[92.4%, 94.1%]",4.03,10407.9,0.0e+00
+"cltv_band=60-80%, debt_to_income_ratio=>60%",decision=Denied,1801,0.923,"[91.0%, 93.4%]",3.99,4973.9,0.0e+00
+"debt_to_income_ratio=>60%, occupancy_type=Principal_Residence",decision=Denied,3818,0.92,"[91.1%, 92.8%]",3.98,10788.0,0.0e+00
+"conforming_loan_limit=C, debt_to_income_ratio=>60%",decision=Denied,3926,0.919,"[91.0%, 92.7%]",3.97,11076.3,0.0e+00
+debt_to_income_ratio=>60%,decision=Denied,4121,0.915,"[90.6%, 92.3%]",3.96,11537.8,0.0e+00
+"debt_to_income_ratio=>60%, tract_income_cat=Middle_Income",decision=Denied,1735,0.915,"[90.1%, 92.7%]",3.96,4674.9,0.0e+00
+"debt_to_income_ratio=>60%, derived_ethnicity=Not Hispanic or Latino",decision=Denied,2685,0.911,"[89.9%, 92.1%]",3.94,7254.8,0.0e+00
+"debt_to_income_ratio=>60%, derived_race=White",decision=Denied,2389,0.902,"[88.9%, 91.3%]",3.9,6264.4,0.0e+00
+"debt_to_income_ratio=>60%, lien_status=First_Lien",decision=Denied,2566,0.9,"[88.8%, 91.1%]",3.89,6710.5,0.0e+00

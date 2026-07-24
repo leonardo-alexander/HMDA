@@ -1,0 +1,37 @@
+derived_race,tract_minority_cat,approval_rate_pct
+2 or more minority races,Low_Minority,75.0
+2 or more minority races,Moderate_Minority,65.9
+2 or more minority races,High_Minority,58.5
+2 or more minority races,Majority_Minority,45.0
+American Indian or Alaska Native,Low_Minority,56.3
+American Indian or Alaska Native,Moderate_Minority,64.8
+American Indian or Alaska Native,High_Minority,55.3
+American Indian or Alaska Native,Majority_Minority,48.1
+Asian,Low_Minority,78.8
+Asian,Moderate_Minority,80.7
+Asian,High_Minority,78.2
+Asian,Majority_Minority,78.1
+Black or African American,Low_Minority,57.9
+Black or African American,Moderate_Minority,67.9
+Black or African American,High_Minority,62.6
+Black or African American,Majority_Minority,60.2
+Free Form Text Only,Low_Minority,33.3
+Free Form Text Only,Moderate_Minority,60.0
+Free Form Text Only,High_Minority,28.6
+Free Form Text Only,Majority_Minority,33.3
+Joint,Low_Minority,81.2
+Joint,Moderate_Minority,81.0
+Joint,High_Minority,76.8
+Joint,Majority_Minority,82.9
+Native Hawaiian or Other Pacific Islander,Low_Minority,65.5
+Native Hawaiian or Other Pacific Islander,Moderate_Minority,60.3
+Native Hawaiian or Other Pacific Islander,High_Minority,55.8
+Native Hawaiian or Other Pacific Islander,Majority_Minority,53.6
+Race Not Available,Low_Minority,76.9
+Race Not Available,Moderate_Minority,76.0
+Race Not Available,High_Minority,70.8
+Race Not Available,Majority_Minority,65.1
+White,Low_Minority,80.2
+White,Moderate_Minority,80.7
+White,High_Minority,76.5
+White,Majority_Minority,72.1

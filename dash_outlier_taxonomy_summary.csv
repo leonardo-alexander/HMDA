@@ -1,0 +1,5 @@
+category,n,pct
+Normal,88971,88.98
+Global outlier,9959,9.96
+Contextual/local outlier,589,0.59
+Both (global + contextual),476,0.48
