@@ -137,3 +137,9 @@ LEAKAGE = ["interest_rate", "rate_spread", "total_loan_costs", "total_points_and
            "origination_charges", "discount_points", "lender_credits", "hoepa_status",
            "purchaser_type", "interest_rate_was_missing", "rate_spread_was_missing",
            "total_loan_costs_was_missing", "origination_charges_was_missing"]
+
+# --- Phase 2/3: post-decision field guard for clustering/anomaly/rule feature sets ---
+
+POST_DECISION = ["interest_rate", "rate_spread", "total_loan_costs", "total_points_and_fees",
+                 "origination_charges", "discount_points", "lender_credits", "interest_rate_band",
+                 "purchaser_type", "hoepa_status"]
