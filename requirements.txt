@@ -1,0 +1,29 @@
+# HMDA 2022 KDD project -- notebook pipeline + dashboard.
+#
+# Install into a fresh virtual environment:
+#   python -m venv .venv
+#   .venv\Scripts\activate   (Windows)  /  source .venv/bin/activate  (Linux/Mac)
+#   pip install -r requirements.txt
+
+# --- Notebook pipeline (Phase 1-5): data, clustering, rules, anomalies, plotting ---
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.2
+scikit-learn==1.7.2
+mlxtend==0.23.4
+matplotlib==3.10.7
+seaborn==0.13.2
+networkx==3.6.1
+
+# --- Jupyter runtime, to open and execute notebooks/HMDA.ipynb ---
+ipython==8.37.0
+ipykernel==7.1.0
+jupyter_client==8.6.3
+nbformat==5.10.4
+nbclient==0.10.2
+nbconvert==7.16.6
+
+# --- Interactive dashboards (both the notebook's standalone HTML export and dashboard/dashboard_app.py) ---
+plotly==6.9.0
+dash==4.4.0
+Flask==3.1.3
