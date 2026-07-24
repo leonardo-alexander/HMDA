@@ -2,6 +2,7 @@
 
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -600,6 +601,7 @@ def kpis():
 
 
 # ============================================================ FIGURE BUILDERS
+@lru_cache(maxsize=1)
 def fig_approval_by_cluster():
     if profiles is None:
         return blank()
@@ -629,6 +631,7 @@ def fig_approval_by_cluster():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_cluster_sizes():
     if profiles is None:
         return blank()
@@ -655,6 +658,7 @@ NUMERIC_AXES = {
 }
 
 
+@lru_cache(maxsize=32)
 def fig_cluster_scatter(xcol, ycol):
     if scatter is None or "kmeans_cluster" not in scatter:
         return blank()
@@ -689,6 +693,7 @@ def fig_cluster_scatter(xcol, ycol):
     return f
 
 
+@lru_cache(maxsize=32)
 def fig_clarans_scatter(xcol, ycol):
     if clarans is None:
         return blank("CLARANS comparison data not found.")
@@ -723,6 +728,7 @@ def fig_clarans_scatter(xcol, ycol):
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_method_comparison():
     """K-Means vs CLARANS vs Hierarchical, all evaluated on the same 4,000-row sample
     (DBSCAN runs on a different, 20k-row sample and produces a variable cluster count,
@@ -762,6 +768,7 @@ def fig_method_comparison():
     return f
 
 
+@lru_cache(maxsize=32)
 def fig_hierarchical_scatter(xcol, ycol):
     if hier_scatter is None:
         return blank("Hierarchical comparison data not found.")
@@ -796,6 +803,7 @@ def fig_hierarchical_scatter(xcol, ycol):
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_dbscan_sizes():
     """Single-hue bars for the 17 density clusters (no categorical hue battle across 17
     values - see the palette's own all-pairs cap); noise gets its own colour because it
@@ -828,6 +836,7 @@ def fig_dbscan_sizes():
     return f
 
 
+@lru_cache(maxsize=32)
 def fig_dbscan_scatter(xcol, ycol):
     """Coloured by Noise vs. Clustered (2 categories) rather than by individual cluster
     id: with 17 density clusters, a per-cluster hue scatter would blow the categorical
@@ -1015,6 +1024,7 @@ def fig_rule_network(df, outcome, min_lift=1.0):
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_anomaly_scatter():
     if scatter is None or "loan_amount" not in scatter:
         return blank()
@@ -1046,6 +1056,7 @@ def fig_anomaly_scatter():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_iso_hist():
     if scatter is None or "iso_score" not in scatter:
         return blank()
@@ -1066,6 +1077,7 @@ def fig_iso_hist():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_vote_breakdown():
     if scatter is None or "anomaly_votes" not in scatter:
         return blank()
@@ -1111,6 +1123,7 @@ TAXONOMY_COLOR = {
 }
 
 
+@lru_cache(maxsize=32)
 def fig_outlier_taxonomy(xcol, ycol):
     if outlier_tax is None or not len(outlier_tax):
         return blank("Outlier taxonomy data not found.")
@@ -1191,6 +1204,7 @@ def _outlier_taxonomy_examples():
     return _table(d, style_data_conditional=sdc)
 
 
+@lru_cache(maxsize=1)
 def fig_disparity():
     if disparity is None or not len(disparity):
         return blank()
@@ -1217,6 +1231,7 @@ def fig_disparity():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_dti_geo_gap():
     if geo_gap is None or not len(geo_gap):
         return blank()
@@ -1261,6 +1276,7 @@ def fig_dti_geo_gap():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_denial_reasons():
     if denial is None or not len(denial):
         return blank()
@@ -1290,6 +1306,7 @@ def fig_denial_reasons():
     return f
 
 
+@lru_cache(maxsize=1)
 def fig_approval_by_dti():
     if (
         scatter is None
@@ -1361,6 +1378,7 @@ STATE_METRICS = {
 }
 
 
+@lru_cache(maxsize=8)
 def fig_state_map(metric):
     if state_summary is None or not len(state_summary):
         return blank("State summary data not found. Run the notebook first.")
@@ -1401,6 +1419,7 @@ def fig_state_map(metric):
     return f
 
 
+@lru_cache(maxsize=64)
 def fig_state_dti(state):
     if state_dti is None or not len(state_dti):
         return blank()
@@ -1441,6 +1460,7 @@ def fig_state_dti(state):
     return f
 
 
+@lru_cache(maxsize=64)
 def fig_state_segment(state):
     if state_segment is None or not len(state_segment):
         return blank()
@@ -1460,6 +1480,7 @@ def fig_state_segment(state):
     return f
 
 
+@lru_cache(maxsize=64)
 def _geo_state_detail_children(state):
     """Drill-down content for one state: KPIs, DTI breakdown, segment mix.
     Called both for the tab's initial default state and from the map-click callback,
@@ -1522,6 +1543,7 @@ def _geo_state_detail_children(state):
 # There is no calendar date to filter on. loan_term (the mortgage's tenor: 15/20/30yr, ...)
 # is the one genuinely ordered, temporal-feeling axis the data actually supports, so it
 # stands in as one more slider on the What-If tab rather than a whole separate timeline tab.
+@lru_cache(maxsize=64)
 def fig_term_range_detail(lo_idx, hi_idx):
     if term_summary is None or not len(term_summary):
         return html.Div("Data not found.", style={"color": MUTE})
@@ -1644,6 +1666,57 @@ def graph(id_or_fig):
     if isinstance(id_or_fig, str):
         return dcc.Graph(id=id_or_fig, config=cfg)
     return dcc.Graph(figure=id_or_fig, config=cfg)
+
+
+def approval_meter(value, title):
+    """Lightweight HTML approval meter for the hot What-If callback.
+
+    Avoids constructing/serializing a Plotly gauge on every profile change.
+    """
+    value = float(value) if value is not None and np.isfinite(value) else 0.0
+    value = max(0.0, min(100.0, value))
+    color = GREEN if value >= 70 else (AMBER if value >= 50 else RED)
+    return html.Div(
+        [
+            html.Div(
+                f"{value:.1f}%",
+                style={
+                    "fontSize": "42px",
+                    "fontWeight": "800",
+                    "color": color,
+                    "lineHeight": "1",
+                    "letterSpacing": "-1px",
+                },
+            ),
+            html.Div(
+                title,
+                style={"fontSize": "11px", "color": MUTE, "marginTop": "7px"},
+            ),
+            html.Div(
+                html.Div(
+                    style={
+                        "width": f"{value:.1f}%",
+                        "height": "100%",
+                        "background": color,
+                        "borderRadius": "999px",
+                    }
+                ),
+                style={
+                    "height": "9px",
+                    "background": GRID,
+                    "borderRadius": "999px",
+                    "overflow": "hidden",
+                    "marginTop": "14px",
+                },
+            ),
+        ],
+        style={
+            "padding": "18px 20px",
+            "background": BG,
+            "borderRadius": "14px",
+            "border": f"1px solid {BORDER}",
+        },
+    )
 
 
 def finding_card(title, body, color):
@@ -2037,34 +2110,86 @@ def decode_control(kind, order_or_values, default, raw):
     return raw or ""
 
 
+# ------------------------------------------------------------------ FAST PROFILE LOOKUP
+# The old callback called `.astype(str)` on whole columns every time a slider/dropdown
+# changed. On Vercel that means repeated allocations + full Pandas scans in the hot path.
+# Encode each profile field once at process start, then callbacks compare compact int16
+# NumPy arrays. The result itself is also cached because users often revisit combinations.
+_PROFILE_CODES: dict[str, np.ndarray] = {}
+_PROFILE_VALUE_CODES: dict[str, dict[str, int]] = {}
+_PROFILE_TARGET = np.empty(0, dtype=np.float32)
+_PROFILE_N = 0
+
+
+def _build_profile_lookup() -> None:
+    global _PROFILE_TARGET, _PROFILE_N
+    if appdeny_full is None or "target_approved" not in appdeny_full.columns:
+        return
+
+    _PROFILE_N = len(appdeny_full)
+    _PROFILE_TARGET = pd.to_numeric(
+        appdeny_full["target_approved"], errors="coerce"
+    ).to_numpy(dtype=np.float32, copy=True)
+
+    for field, *_ in PROFILE_FIELDS:
+        if field not in appdeny_full.columns:
+            continue
+        # String conversion/category discovery happens once, never inside a callback.
+        cat = pd.Categorical(appdeny_full[field].astype("string").fillna(""))
+        # int16 is ample for these low-cardinality HMDA categories and stays cache-friendly.
+        _PROFILE_CODES[field] = cat.codes.astype(np.int16, copy=False)
+        _PROFILE_VALUE_CODES[field] = {
+            str(value): int(code) for code, value in enumerate(cat.categories)
+        }
+
+
+_build_profile_lookup()
+
+
+@lru_cache(maxsize=4096)
+def _combined_match_cached(filters: tuple[tuple[str, str], ...]) -> tuple[float, int]:
+    """Fast cached lookup for one normalized profile combination."""
+    base = BASE_APPROVAL if np.isfinite(BASE_APPROVAL) else 0.0
+    if _PROFILE_N == 0 or not filters:
+        return base, 0
+
+    mask = np.ones(_PROFILE_N, dtype=np.bool_)
+    usable = 0
+    for field, value in filters:
+        codes = _PROFILE_CODES.get(field)
+        value_codes = _PROFILE_VALUE_CODES.get(field)
+        if codes is None or value_codes is None:
+            # Preserve the old behavior: unavailable columns simply do not filter.
+            continue
+        usable += 1
+        code = value_codes.get(str(value))
+        if code is None:
+            return base, 0
+        mask &= codes == code
+        if not mask.any():
+            return base, 0
+
+    if usable == 0:
+        return base, 0
+
+    n = int(np.count_nonzero(mask))
+    values = _PROFILE_TARGET[mask]
+    if not len(values):
+        return base, 0
+    rate = float(np.nanmean(values) * 100.0)
+    if not np.isfinite(rate):
+        rate = base
+    return rate, n
+
+
 def combined_match(selected: list[tuple[str, str, str]]):
-    """Direct empirical filter across every historical decisioned application
-    (hmda_approve_deny.csv), using every currently-selected profile field at once.
+    """Direct historical approval lookup optimized for sub-100-ms warm callbacks.
 
-    This is deliberately not a predictive model and not a rule lookup: it is a
-    real conditional approval rate among applications that match every selected
-    attribute simultaneously, which is what lets the combined profile (loan
-    terms + the former "more context" fields together) produce one number
-    instead of two disconnected ones.
-
-    Returns (approval_rate_pct, n_matched, active) where active is the list of
-    (label, value) pairs that are actually filtering right now.
+    Returns (approval_rate_pct, n_matched, active), preserving the previous API.
     """
     active = [(label, value) for _, label, value in selected if value]
-    base = BASE_APPROVAL if np.isfinite(BASE_APPROVAL) else 0.0
-    if appdeny_full is None or not active:
-        return base, 0, active
-
-    mask = pd.Series(True, index=appdeny_full.index)
-    for field, _, value in selected:
-        if not value or field not in appdeny_full.columns:
-            continue
-        mask &= appdeny_full[field].astype(str) == str(value)
-
-    n = int(mask.sum())
-    if n == 0:
-        return base, 0, active
-    rate = float(appdeny_full.loc[mask, "target_approved"].mean() * 100)
+    filters = tuple((field, str(value)) for field, _, value in selected if value)
+    rate, n = _combined_match_cached(filters)
     return rate, n, active
 
 
@@ -2391,6 +2516,7 @@ app.layout = html.Div(
 
 # ============================================================ tab routing
 @app.callback(Output("tab-content", "children"), Input("tabs", "value"))
+@lru_cache(maxsize=8)
 def render(tab):
     if tab == "summary":
         return html.Div(
@@ -3045,6 +3171,7 @@ def _axis_picker(xcol_id, ycol_id, opts, default_x="income", default_y="loan_amo
 @app.callback(
     Output("segments-method-panel", "children"), Input("cluster-method", "value")
 )
+@lru_cache(maxsize=4)
 def _cb_segments(method):
     opts = [{"label": v, "value": k} for k, v in NUMERIC_AXES.items()]
 
@@ -3295,7 +3422,7 @@ def _cb_whatif(*values):
             html.Div(
                 [
                     html.Div(
-                        graph(fig_gauge(appr, outcome_label)),
+                        approval_meter(appr, outcome_label),
                         style={"flex": "1", "minWidth": "280px"},
                     ),
                     html.Div(
