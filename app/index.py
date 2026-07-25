@@ -3467,8 +3467,6 @@ def _cb_whatif(*values):
 
 # ============================================================ run
 if __name__ == "__main__":
-    # Local:  python dashboard_app.py   ->  http://127.0.0.1:8050
-    # Colab:  app.run(jupyter_mode="external")   (clickable link)  or  jupyter_mode="inline"
     app.run(
         host=os.getenv("HMDA_HOST", "127.0.0.1"),
         port=int(os.getenv("HMDA_PORT", "8050")),
