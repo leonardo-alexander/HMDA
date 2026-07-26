@@ -92,6 +92,7 @@ pio.templates["hmda"] = go.layout.Template(
 )
 TEMPLATE = "hmda"
 
+
 # Resolve CSVs relative to this script rather than the process working directory.
 # The pipeline (build_data.py / the notebook) writes exports to <project>/data/processed,
 # so default there; fall back to the script directory for bundled deployments where the
@@ -103,11 +104,7 @@ def _default_data_dir() -> Path:
     return processed if processed.exists() else here
 
 
-DATA_DIR = (
-    Path(os.getenv("HMDA_DATA_DIR", _default_data_dir()))
-    .expanduser()
-    .resolve()
-)
+DATA_DIR = Path(os.getenv("HMDA_DATA_DIR", _default_data_dir())).expanduser().resolve()
 LOGGER = logging.getLogger("hmda_dashboard")
 if not LOGGER.handlers:
     logging.basicConfig(
@@ -478,9 +475,13 @@ if rules_all is not None and rules is not None:
 elif rules_all is not None:
     rules_all["kept"] = "No"
 # Fase 1 (preprocessing) aggregates - written by the notebook / build_data.py.
-phase1_missing = read("dash_phase1_missingness.csv")      # field, missing_pct, fate
-phase1_features = read("dash_phase1_feature_importance.csv")  # feature, corr, mi, score, role
-phase1_summary = read("dash_phase1_cleaning_summary.csv")  # raw_rows, clean_rows, duplicates_removed, ...
+phase1_missing = read("dash_phase1_missingness.csv")  # field, missing_pct, fate
+phase1_features = read(
+    "dash_phase1_feature_importance.csv"
+)  # feature, corr, mi, score, role
+phase1_summary = read(
+    "dash_phase1_cleaning_summary.csv"
+)  # raw_rows, clean_rows, duplicates_removed, ...
 # Fase 2: head-to-head clustering validity metrics (silhouette, DB, CH, ARI vs K-Means)
 clustering_cmp = read("dash_clustering_comparison.csv")
 state_summary = read(
@@ -640,7 +641,11 @@ def kpis():
         ("Tingkat penolakan", f"{100-appr:.1f}%" if appr == appr else "N/A", RED),
         ("Segmen ditemukan", f"{n_clusters}", TEAL),
         ("Aturan relevan bisnis", f"{n_rules}", NAVY),
-        ("Lift aturan tertinggi", f"{max_lift:.1f}x" if max_lift == max_lift else "N/A", AMBER),
+        (
+            "Lift aturan tertinggi",
+            f"{max_lift:.1f}x" if max_lift == max_lift else "N/A",
+            AMBER,
+        ),
         ("Anomali keyakinan tinggi", f"{n_anom:,}", "#7d3c98"),
     ]
 
@@ -1423,11 +1428,79 @@ STATE_METRICS = {
 }
 
 
+STATE_NAMES = {
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "DC": "District of Columbia",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming",
+    "PR": "Puerto Rico",
+    "GU": "Guam",
+    "VI": "U.S. Virgin Islands",
+    "AS": "American Samoa",
+    "MP": "Northern Mariana Islands",
+}
+
+
+def sname(code):
+    """Full state name for display. The 2-letter code stays the map's location value."""
+    return STATE_NAMES.get(str(code).upper(), str(code))
+
+
 @lru_cache(maxsize=8)
 def fig_state_map(metric):
     if state_summary is None or not len(state_summary):
-        return blank("Data ringkasan negara bagian tidak ditemukan. Jalankan notebook dulu.")
+        return blank(
+            "Data ringkasan negara bagian tidak ditemukan. Jalankan notebook dulu."
+        )
     d = state_summary.copy()
+    d["state_name"] = d["state_code"].map(sname)
     label, scale = STATE_METRICS.get(metric, ("Nilai", "Blues"))
     f = px.choropleth(
         d,
@@ -1442,13 +1515,14 @@ def fig_state_map(metric):
             "median_income",
             "median_loan",
             "top_denial_reason",
+            "state_name",
         ],
         labels={metric: label},
     )
     # "%{hover_name}" is not a real Plotly token (that bug showed a bare "-" instead of
     # the state code); "%{location}" is the correct token for a choropleth's `locations` column.
     f.update_traces(
-        hovertemplate="<b>%{location}</b><br>Applications: %{customdata[0]:,}<br>"
+        hovertemplate="<b>%{customdata[5]}</b><br>Aplikasi: %{customdata[0]:,}<br>"
         "Tingkat persetujuan: %{customdata[1]:.1f}%<br>"
         "Median income: $%{customdata[2]:.0f}k<br>"
         "Median loan: $%{customdata[3]:,.0f}<br>"
@@ -1458,7 +1532,7 @@ def fig_state_map(metric):
         template=TEMPLATE,
         height=460,
         margin=dict(l=10, r=10, t=30, b=10),
-        title=f"{label} by state (click a state to drill in below)",
+        title=f"{label} per negara bagian, klik untuk rincian di bawah",
         geo=dict(bgcolor="rgba(0,0,0,0)", lakecolor=BG),
     )
     return f
@@ -1471,7 +1545,7 @@ def fig_state_dti(state):
     d = state_dti[state_dti["state_code"] == state].copy()
     if not len(d):
         return blank(
-            f"No DTI-band detail for {state} (too few decisioned applications)."
+            f"Tidak ada rincian band DTI untuk {sname(state)}, aplikasi berkeputusannya terlalu sedikit."
         )
     order = ["<20%", "20%-<30%", "30%-<36%", "36%-<43%", "43%-<50%", "50%-60%", ">60%"]
     d["dti_band"] = pd.Categorical(
@@ -1497,7 +1571,7 @@ def fig_state_dti(state):
         template=TEMPLATE,
         height=340,
         coloraxis_showscale=False,
-        title=f"{state}: approval by DTI band",
+        title=f"{sname(state)}: persetujuan per band DTI",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     f.update_xaxes(tickangle=-30, automargin=True, tickfont=dict(size=10.5))
@@ -1511,14 +1585,14 @@ def fig_state_segment(state):
         return blank()
     d = state_segment[state_segment["state_code"] == state].copy()
     if not len(d):
-        return blank(f"No segment detail for {state}.")
+        return blank(f"Tidak ada rincian segmen untuk {sname(state)}.")
     d["Segment"] = d["kmeans_cluster"].map(clabel)
     f = px.pie(d, values="n", names="Segment", hole=0.45, color_discrete_sequence=QUAL)
     f.update_traces(textposition="inside", textinfo="percent")
     f.update_layout(
         template=TEMPLATE,
         height=320,
-        title=f"{state}: segment mix",
+        title=f"{sname(state)}: komposisi segmen",
         margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(font=dict(size=8)),
     )
@@ -1549,7 +1623,7 @@ def _geo_state_detail_children(state):
     return html.Div(
         [
             html.Div(
-                f"Menampilkan: {state}",
+                f"Menampilkan: {sname(state)}",
                 style={"fontSize": "12px", "color": MUTE, "marginBottom": "6px"},
             ),
             html.Div(
@@ -1565,14 +1639,15 @@ def _geo_state_detail_children(state):
                 [
                     html.Div(
                         panel(
-                            f"{state}: approval by DTI band",
+                            f"{sname(state)}: persetujuan per band DTI",
                             [graph(fig_state_dti(state))],
                         ),
                         style={"flex": "1", "minWidth": "340px"},
                     ),
                     html.Div(
                         panel(
-                            f"{state}: segment mix", [graph(fig_state_segment(state))]
+                            f"{sname(state)}: komposisi segmen",
+                            [graph(fig_state_segment(state))],
                         ),
                         style={"flex": "1", "minWidth": "300px"},
                     ),
@@ -2068,7 +2143,13 @@ TRACT_INCOME_ORDER = ["Low_Income", "Moderate_Income", "Middle_Income", "Upper_I
 # field -> (label, kind, order_or_values, default)
 WHATIF_FIELDS = [
     ("debt_to_income_ratio", "Debt-to-income", "dropdown", DTI_ORDER, None),
-    ("lien_status", "Status lien", "dropdown", ["First_Lien", "Subordinate_Lien"], None),
+    (
+        "lien_status",
+        "Status lien",
+        "dropdown",
+        ["First_Lien", "Subordinate_Lien"],
+        None,
+    ),
     (
         "loan_type",
         "Jenis loan",
@@ -2200,27 +2281,41 @@ def vlabel(v):
     return VALUE_LABELS.get(str(v), str(v))
 
 
-def render_control(field, label, kind, order_or_values, default, id_prefix):
+CONTROL_WRAP_STYLE = {"minWidth": "180px", "flex": "1 1 180px"}
+
+# DTI is roughly debt over income, so it overlaps with income band and loan amount.
+# Selecting all three at once slices the sample down to a handful of applications, which
+# makes the resulting rate meaningless. The What-If tab therefore offers one basis at a
+# time; these wrapper ids let the mode switch hide and clear the unused controls.
+FIN_WRAP = {
+    "debt_to_income_ratio": "wrap-dti",
+    "income_band": "wrap-income",
+    "loan_amount_band": "wrap-loan",
+}
+
+
+def render_control(
+    field, label, kind, order_or_values, default, id_prefix, wrap_id=None
+):
     # Every control is a dropdown. Sliders were unusable here: with 6-9 bands their tick
     # labels overlapped into an unreadable smear, and they could not express
     # "not specified" the way the dropdowns and toggles already did.
     opts = order_or_values if order_or_values else _dropdown_options(field)
-    return html.Div(
-        [
-            html.Label(
-                label, style={"fontSize": "11px", "color": MUTE, "fontWeight": "600"}
-            ),
-            dcc.Dropdown(
-                id=f"{id_prefix}-{field}",
-                options=[{"label": "(tidak ditentukan)", "value": ""}]
-                + [{"label": vlabel(v), "value": v} for v in opts],
-                value="",
-                clearable=False,
-                style={"fontSize": "12px"},
-            ),
-        ],
-        style={"minWidth": "180px", "flex": "1 1 180px"},
-    )
+    children = [
+        html.Label(
+            label, style={"fontSize": "11px", "color": MUTE, "fontWeight": "600"}
+        ),
+        dcc.Dropdown(
+            id=f"{id_prefix}-{field}",
+            options=[{"label": "(tidak ditentukan)", "value": ""}]
+            + [{"label": vlabel(v), "value": v} for v in opts],
+            value="",
+            clearable=False,
+            style={"fontSize": "12px"},
+        ),
+    ]
+    kwargs = {"id": wrap_id} if wrap_id else {}
+    return html.Div(children, style=dict(CONTROL_WRAP_STYLE), **kwargs)
 
 
 def decode_control(kind, order_or_values, default, raw):
@@ -2461,6 +2556,9 @@ app.index_string = """<!DOCTYPE html>
       :root { --navy:#14294a; --steel:#2a78d6; --bg:#eef2f6; --mute:#64748b; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      .hmda-navlink { transition: background .15s ease, border-color .15s ease; }
+      .hmda-navlink:hover { background: #eef4fc; border-left-color: #2a78d6 !important; }
       body {
         background: linear-gradient(180deg, #eef2f6 0%, #f4f7fa 320px, #f4f7fa 100%);
         font-family: Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif;
@@ -2660,214 +2758,288 @@ app.layout = html.Div(
 # Every threshold and algorithm choice below is stated with its reason, so the dashboard
 # defends its own methodology instead of presenting bare numbers.
 WHY_CLEANING = [
-    ("Kenapa kolom dengan lebih dari 60% nilai kosong dibuang?",
-     "Kolom yang lebih dari separuh isinya kosong tidak bisa diimputasi tanpa mengarang "
-     "mayoritas nilainya, dan hasil karangan itu akan mendominasi data aslinya. Ambang 60% "
-     "sengaja dibuat longgar, bukan 20-30%, karena banyak field HMDA kosong akibat aturan "
-     "pelaporan dan bukan karena salah input. Selama masih ada 40% nilai asli, kolomnya tetap "
-     "dipakai."),
-    ("Kenapa duplikat dihapus lebih dulu?",
-     "Baris kembar membuat pola yang sama terhitung dua kali, sehingga support dan confidence "
-     "di Fase 3 ikut menggelembung. Dari 100.000 baris cuma 5 yang benar-benar kembar, jadi "
-     "dampaknya kecil, tapi pemeriksaannya tetap perlu didokumentasikan."),
+    (
+        "Kenapa kolom dengan lebih dari 60% nilai kosong dibuang?",
+        "Kolom yang lebih dari separuh isinya kosong tidak bisa diimputasi tanpa mengarang "
+        "mayoritas nilainya, dan hasil karangan itu akan mendominasi data aslinya. Ambang 60% "
+        "sengaja dibuat longgar, bukan 20-30%, karena banyak field HMDA kosong akibat aturan "
+        "pelaporan dan bukan karena salah input. Selama masih ada 40% nilai asli, kolomnya tetap "
+        "dipakai.",
+    ),
+    (
+        "Kenapa duplikat dihapus lebih dulu?",
+        "Baris kembar membuat pola yang sama terhitung dua kali, sehingga support dan confidence "
+        "di Fase 3 ikut menggelembung. Dari 100.000 baris cuma 5 yang benar-benar kembar, jadi "
+        "dampaknya kecil, tapi pemeriksaannya tetap perlu didokumentasikan.",
+    ),
 ]
 
 WHY_FEATURE_TYPES = [
-    ("Kenapa fitur harus dipisah per tipe?",
-     "Karena tiap tipe butuh perlakuan berbeda, dan salah perlakuan bikin error yang tidak "
-     "kelihatan. Kalau loan_purpose bernilai 1, 2, 3 diperlakukan sebagai angka biasa, model "
-     "akan mengira tujuan 3 itu tiga kali lebih besar dari tujuan 1, padahal angkanya cuma kode."),
-    ("Kenapa partisinya wajib menutup semua kolom?",
-     "Supaya tidak ada kolom yang terlewat diam-diam atau malah masuk dua grup sekaligus. "
-     "Pemeriksaan ini dijalankan sebagai assert di notebook, jadi kalau ada kolom baru yang "
-     "belum dikategorikan, prosesnya langsung berhenti."),
-    ("Kenapa kolom ID dibuang dari pemodelan?",
-     "LEI dan census_tract itu penanda, bukan karakteristik pemohon. Kalau ikut dipakai, model "
-     "bisa menghafal lender atau wilayah tertentu, dan itu bukan pola yang bisa dipakai untuk "
-     "aplikasi baru."),
+    (
+        "Kenapa fitur harus dipisah per tipe?",
+        "Karena tiap tipe butuh perlakuan berbeda, dan salah perlakuan bikin error yang tidak "
+        "kelihatan. Kalau loan_purpose bernilai 1, 2, 3 diperlakukan sebagai angka biasa, model "
+        "akan mengira tujuan 3 itu tiga kali lebih besar dari tujuan 1, padahal angkanya cuma kode.",
+    ),
+    (
+        "Kenapa partisinya wajib menutup semua kolom?",
+        "Supaya tidak ada kolom yang terlewat diam-diam atau malah masuk dua grup sekaligus. "
+        "Pemeriksaan ini dijalankan sebagai assert di notebook, jadi kalau ada kolom baru yang "
+        "belum dikategorikan, prosesnya langsung berhenti.",
+    ),
+    (
+        "Kenapa kolom ID dibuang dari pemodelan?",
+        "LEI dan census_tract itu penanda, bukan karakteristik pemohon. Kalau ikut dipakai, model "
+        "bisa menghafal lender atau wilayah tertentu, dan itu bukan pola yang bisa dipakai untuk "
+        "aplikasi baru.",
+    ),
 ]
 
 WHY_MISSING = [
-    ("Kenapa fitur kontinu diisi median, bukan mean?",
-     "Income, loan amount, dan property value distribusinya menjulur jauh ke kanan. Ada property "
-     "value sampai $130 juta, dan angka sebesar itu menarik mean ke atas sehingga nilai isian "
-     "jadi terlalu tinggi untuk pemohon kebanyakan. Median tidak terpengaruh ekor ekstrem."),
-    ("Kenapa tidak pakai KNN imputation saja?",
-     "Tiga alasan. Mencari tetangga terdekat di 100.000 baris jauh lebih mahal daripada hitung "
-     "satu median. Untuk data regulasi, alasan diisi median kolom jauh lebih mudah "
-     "dipertanggungjawabkan daripada angka keluaran model. Dan yang paling penting, imputasi "
-     "berbasis fitur lain menanamkan korelasi buatan antar fitur, yang nanti bisa muncul lagi "
-     "sebagai association rule di Fase 3. Jadi kita menemukan pola yang kita buat sendiri."),
-    ("Kenapa kategorikal diisi Unknown, bukan modus?",
-     "Karena kosong di sini ada artinya. Sering menandakan Exempt atau memang tidak dilaporkan. "
-     "Kalau diisi modus, sinyal itu hilang dan kategori terbanyak jadi menggelembung tanpa alasan. "
-     "Unknown mempertahankannya sebagai kategori sendiri yang masih bisa dianalisis."),
-    ("Kenapa perlu penanda _was_missing?",
-     "Supaya jejak imputasi tetap terekam. Tanpa penanda, nilai hasil isian tidak bisa dibedakan "
-     "dari nilai asli. Penanda ini sengaja tidak ikut ke Fase 2 sampai 4 karena sifatnya "
-     "diagnostik proses, bukan karakteristik pemohon."),
+    (
+        "Kenapa fitur kontinu diisi median, bukan mean?",
+        "Income, loan amount, dan property value distribusinya menjulur jauh ke kanan. Ada property "
+        "value sampai $130 juta, dan angka sebesar itu menarik mean ke atas sehingga nilai isian "
+        "jadi terlalu tinggi untuk pemohon kebanyakan. Median tidak terpengaruh ekor ekstrem.",
+    ),
+    (
+        "Kenapa tidak pakai KNN imputation saja?",
+        "Tiga alasan. Mencari tetangga terdekat di 100.000 baris jauh lebih mahal daripada hitung "
+        "satu median. Untuk data regulasi, alasan diisi median kolom jauh lebih mudah "
+        "dipertanggungjawabkan daripada angka keluaran model. Dan yang paling penting, imputasi "
+        "berbasis fitur lain menanamkan korelasi buatan antar fitur, yang nanti bisa muncul lagi "
+        "sebagai association rule di Fase 3. Jadi kita menemukan pola yang kita buat sendiri.",
+    ),
+    (
+        "Kenapa kategorikal diisi Unknown, bukan modus?",
+        "Karena kosong di sini ada artinya. Sering menandakan Exempt atau memang tidak dilaporkan. "
+        "Kalau diisi modus, sinyal itu hilang dan kategori terbanyak jadi menggelembung tanpa alasan. "
+        "Unknown mempertahankannya sebagai kategori sendiri yang masih bisa dianalisis.",
+    ),
+    (
+        "Kenapa perlu penanda _was_missing?",
+        "Supaya jejak imputasi tetap terekam. Tanpa penanda, nilai hasil isian tidak bisa dibedakan "
+        "dari nilai asli. Penanda ini sengaja tidak ikut ke Fase 2 sampai 4 karena sifatnya "
+        "diagnostik proses, bukan karakteristik pemohon.",
+    ),
 ]
 
 WHY_FEATURE_SELECTION = [
-    ("Kenapa pakai korelasi dan mutual information sekaligus?",
-     "Korelasi cuma menangkap hubungan linear, jadi fitur yang pengaruhnya melengkung akan "
-     "terlihat lemah padahal penting. Mutual information menangkap hubungan non-linear tapi tidak "
-     "memberi arah positif atau negatif. Dipakai berdua supaya saling menutup kelemahan."),
-    ("Kenapa fitur pasca-keputusan dibuang?",
-     "Ini soal kebocoran data. Interest rate, total loan costs, dan origination charges baru ada "
-     "setelah aplikasi disetujui. Kalau dipakai untuk menjelaskan persetujuan, hasilnya akan "
-     "kelihatan sangat akurat tapi tidak berguna, karena saat aplikasi baru masuk field itu belum "
-     "ada isinya."),
+    (
+        "Kenapa pakai korelasi dan mutual information sekaligus?",
+        "Korelasi cuma menangkap hubungan linear, jadi fitur yang pengaruhnya melengkung akan "
+        "terlihat lemah padahal penting. Mutual information menangkap hubungan non-linear tapi tidak "
+        "memberi arah positif atau negatif. Dipakai berdua supaya saling menutup kelemahan.",
+    ),
+    (
+        "Kenapa fitur pasca-keputusan dibuang?",
+        "Ini soal kebocoran data. Interest rate, total loan costs, dan origination charges baru ada "
+        "setelah aplikasi disetujui. Kalau dipakai untuk menjelaskan persetujuan, hasilnya akan "
+        "kelihatan sangat akurat tapi tidak berguna, karena saat aplikasi baru masuk field itu belum "
+        "ada isinya.",
+    ),
 ]
 
 WHY_SCALING = [
-    ("Kenapa winsorize 1% dan 99% sebelum clustering?",
-     "K-Means bekerja dengan jarak kuadrat, jadi satu properti $130 juta bisa menarik seluruh "
-     "centroid dan bikin clusternya tidak masuk akal. Winsorize memotong ekornya tanpa membuang "
-     "barisnya."),
-    ("Kenapa winsorize cuma untuk clustering?",
-     "Karena Fase 4 justru mencari nilai ekstrem. Kalau ekornya sudah dipotong duluan, deteksi "
-     "anomali kehilangan target utamanya. Jadi winsorize cuma dipakai di salinan untuk "
-     "clustering, sementara nilai asli tetap utuh untuk profiling, rules, dan anomali."),
-    ("Kenapa clustering pakai StandardScaler tapi anomali pakai RobustScaler?",
-     "Karena tujuannya bertolak belakang. Clustering pakai jarak Euclidean, jadi semua fitur harus "
-     "setara. Tanpa penskalaan, loan amount yang ratusan ribu akan menenggelamkan CLTV yang cuma "
-     "persen, dan jaraknya praktis cuma mengukur loan amount. Sementara deteksi anomali justru "
-     "mencari outlier, jadi penskalaannya tidak boleh ikut terpengaruh outlier. Mean dan standar "
-     "deviasi tertarik nilai ekstrem, akibatnya outlier menggelembungkan std lalu z-score-nya "
-     "sendiri malah mengecil. Median dan IQR di RobustScaler tidak punya masalah itu."),
+    (
+        "Kenapa winsorize 1% dan 99% sebelum clustering?",
+        "K-Means bekerja dengan jarak kuadrat, jadi satu properti $130 juta bisa menarik seluruh "
+        "centroid dan bikin clusternya tidak masuk akal. Winsorize memotong ekornya tanpa membuang "
+        "barisnya.",
+    ),
+    (
+        "Kenapa winsorize cuma untuk clustering?",
+        "Karena Fase 4 justru mencari nilai ekstrem. Kalau ekornya sudah dipotong duluan, deteksi "
+        "anomali kehilangan target utamanya. Jadi winsorize cuma dipakai di salinan untuk "
+        "clustering, sementara nilai asli tetap utuh untuk profiling, rules, dan anomali.",
+    ),
+    (
+        "Kenapa clustering pakai StandardScaler tapi anomali pakai RobustScaler?",
+        "Karena tujuannya bertolak belakang. Clustering pakai jarak Euclidean, jadi semua fitur harus "
+        "setara. Tanpa penskalaan, loan amount yang ratusan ribu akan menenggelamkan CLTV yang cuma "
+        "persen, dan jaraknya praktis cuma mengukur loan amount. Sementara deteksi anomali justru "
+        "mencari outlier, jadi penskalaannya tidak boleh ikut terpengaruh outlier. Mean dan standar "
+        "deviasi tertarik nilai ekstrem, akibatnya outlier menggelembungkan std lalu z-score-nya "
+        "sendiri malah mengecil. Median dan IQR di RobustScaler tidak punya masalah itu.",
+    ),
 ]
 
 WHY_METHODS = [
-    ("Kenapa K-Means yang jadi metode utama?",
-     "Karena cuma K-Means yang sanggup jalan di seluruh 99.995 aplikasi. Biayanya linear terhadap "
-     "jumlah baris, sedangkan hierarchical butuh matriks jarak antar semua pasangan baris. Selain "
-     "itu K-Means juga menang di semua metrik saat diuji pada sampel yang sama."),
-    ("Kenapa DBSCAN tetap dijalankan?",
-     "Untuk dua hal yang tidak bisa dilakukan K-Means. K-Means memaksa semua titik masuk cluster "
-     "dan mengasumsikan bentuknya membulat, sedangkan DBSCAN bekerja dari kepadatan sehingga "
-     "bentuk clusternya bebas. DBSCAN juga menandai noise, dan 895 titik noise itu dipakai sebagai "
-     "salah satu dari lima detektor anomali di Fase 4."),
-    ("Kenapa hierarchical Ward?",
-     "Untuk mengecek apakah struktur 7 segmen itu memang ada di datanya atau cuma hasil bentukan "
-     "K-Means. Ward tidak butuh K ditentukan di awal, dia membangun hierarki penuh yang bisa "
-     "dipotong di K berapa pun. ARI 0,906 terhadap K-Means menunjukkan keduanya sangat sepakat."),
-    ("Kenapa CLARANS?",
-     "Karena pusat clusternya berupa aplikasi nyata, bukan rata-rata buatan. Centroid K-Means bisa "
-     "jatuh di titik yang tidak pernah ada di data, sedangkan medoid CLARANS bisa langsung "
-     "ditunjuk sebagai contoh konkret dari sebuah segmen."),
-    ("Kenapa DBSCAN dan hierarchical pakai sampel?",
-     "Ini keputusan teknis, bukan karena algoritmanya menyampel sendiri. Hierarchical memang wajib "
-     "disampel karena matriks linkage-nya butuh memori sebanding kuadrat jumlah baris, dan di "
-     "100.000 baris itu sekitar 10 miliar pasangan, pasti kehabisan memori. DBSCAN sebenarnya bisa "
-     "lebih besar, tapi makin lambat dan penyetelan eps makin sensitif. Sampel 20.000 sudah cukup "
-     "untuk melihat struktur kepadatannya."),
+    (
+        "Kenapa K-Means yang jadi metode utama?",
+        "Karena cuma K-Means yang sanggup jalan di seluruh 99.995 aplikasi. Biayanya linear terhadap "
+        "jumlah baris, sedangkan hierarchical butuh matriks jarak antar semua pasangan baris. Selain "
+        "itu K-Means juga menang di semua metrik saat diuji pada sampel yang sama.",
+    ),
+    (
+        "Kenapa DBSCAN tetap dijalankan?",
+        "Untuk dua hal yang tidak bisa dilakukan K-Means. K-Means memaksa semua titik masuk cluster "
+        "dan mengasumsikan bentuknya membulat, sedangkan DBSCAN bekerja dari kepadatan sehingga "
+        "bentuk clusternya bebas. DBSCAN juga menandai noise, dan 895 titik noise itu dipakai sebagai "
+        "salah satu dari lima detektor anomali di Fase 4.",
+    ),
+    (
+        "Kenapa hierarchical Ward?",
+        "Untuk mengecek apakah struktur 7 segmen itu memang ada di datanya atau cuma hasil bentukan "
+        "K-Means. Ward tidak butuh K ditentukan di awal, dia membangun hierarki penuh yang bisa "
+        "dipotong di K berapa pun. ARI 0,906 terhadap K-Means menunjukkan keduanya sangat sepakat.",
+    ),
+    (
+        "Kenapa CLARANS?",
+        "Karena pusat clusternya berupa aplikasi nyata, bukan rata-rata buatan. Centroid K-Means bisa "
+        "jatuh di titik yang tidak pernah ada di data, sedangkan medoid CLARANS bisa langsung "
+        "ditunjuk sebagai contoh konkret dari sebuah segmen.",
+    ),
+    (
+        "Kenapa DBSCAN dan hierarchical pakai sampel?",
+        "Ini keputusan teknis, bukan karena algoritmanya menyampel sendiri. Hierarchical memang wajib "
+        "disampel karena matriks linkage-nya butuh memori sebanding kuadrat jumlah baris, dan di "
+        "100.000 baris itu sekitar 10 miliar pasangan, pasti kehabisan memori. DBSCAN sebenarnya bisa "
+        "lebih besar, tapi makin lambat dan penyetelan eps makin sensitif. Sampel 20.000 sudah cukup "
+        "untuk melihat struktur kepadatannya.",
+    ),
 ]
 
 WHY_BEST_METHOD = [
-    ("Kenapa K-Means disebut paling baik?",
-     "Karena pada sampel 4.000 baris yang sama, K-Means unggul di ketiga metrik sekaligus. "
-     "Silhouette tertinggi 0,303, Davies-Bouldin terendah 1,137, dan Calinski-Harabasz tertinggi "
-     "869. Jadi keunggulannya bukan cuma di satu metrik yang kebetulan menguntungkan."),
-    ("Kenapa K-nya 7, dasarnya apa?",
-     "Silhouette, bukan elbow. Elbow cuma memberi kandidat dan pembacaannya subjektif, dua orang "
-     "bisa melihat kurva yang sama lalu memilih K berbeda. Silhouette mengukur langsung seberapa "
-     "rapat sebuah titik ke clusternya dibanding cluster tetangga, jadi hasilnya satu angka yang "
-     "bisa dibandingkan antar K. Elbow tetap dihitung sebagai pembanding, tapi keputusannya di "
-     "silhouette."),
-    ("Kenapa angka DBSCAN tidak bisa dibandingkan langsung?",
-     "Karena DBSCAN diukur di sampel 20.000 dan titik noise-nya dikeluarkan dari perhitungan. "
-     "Davies-Bouldin-nya terlihat paling rendah sebagian justru karena 895 titik tersulit tidak "
-     "ikut dihitung. Itu sebabnya baris K-Means pada sampel 4.000 disertakan, supaya ada "
-     "pembanding yang setara."),
-    ("Kenapa ARI CLARANS cuma 0,710?",
-     "Itu wajar, bukan tanda gagal. CLARANS mengoptimalkan medoid sedangkan K-Means mengoptimalkan "
-     "centroid, jadi tujuannya memang beda dan hasilnya tidak harus sama persis. Yang penting "
-     "keduanya tetap menemukan jumlah segmen yang sama."),
+    (
+        "Kenapa K-Means disebut paling baik?",
+        "Karena pada sampel 4.000 baris yang sama, K-Means unggul di ketiga metrik sekaligus. "
+        "Silhouette tertinggi 0,303, Davies-Bouldin terendah 1,137, dan Calinski-Harabasz tertinggi "
+        "869. Jadi keunggulannya bukan cuma di satu metrik yang kebetulan menguntungkan.",
+    ),
+    (
+        "Kenapa K-nya 7, dasarnya apa?",
+        "Silhouette, bukan elbow. Elbow cuma memberi kandidat dan pembacaannya subjektif, dua orang "
+        "bisa melihat kurva yang sama lalu memilih K berbeda. Silhouette mengukur langsung seberapa "
+        "rapat sebuah titik ke clusternya dibanding cluster tetangga, jadi hasilnya satu angka yang "
+        "bisa dibandingkan antar K. Elbow tetap dihitung sebagai pembanding, tapi keputusannya di "
+        "silhouette.",
+    ),
+    (
+        "Kenapa angka DBSCAN tidak bisa dibandingkan langsung?",
+        "Karena DBSCAN diukur di sampel 20.000 dan titik noise-nya dikeluarkan dari perhitungan. "
+        "Davies-Bouldin-nya terlihat paling rendah sebagian justru karena 895 titik tersulit tidak "
+        "ikut dihitung. Itu sebabnya baris K-Means pada sampel 4.000 disertakan, supaya ada "
+        "pembanding yang setara.",
+    ),
+    (
+        "Kenapa ARI CLARANS cuma 0,710?",
+        "Itu wajar, bukan tanda gagal. CLARANS mengoptimalkan medoid sedangkan K-Means mengoptimalkan "
+        "centroid, jadi tujuannya memang beda dan hasilnya tidak harus sama persis. Yang penting "
+        "keduanya tetap menemukan jumlah segmen yang sama.",
+    ),
 ]
 
 WHY_RULE_THRESHOLD = [
-    ("Kenapa minimum support 2%?",
-     "Di 67.827 aplikasi berkeputusan, 2% itu sekitar 1.357 aplikasi. Cukup besar supaya "
-     "confidence-nya stabil dan tidak lahir dari segelintir kasus, tapi masih cukup kecil supaya "
-     "segmen minoritas seperti manufactured housing tidak ikut tersapu sebelum sempat dianalisis."),
-    ("Kenapa lift harus di atas 1,2?",
-     "Lift 1,0 artinya antecedent dan hasilnya saling bebas, jadi aturannya tidak memberi "
-     "informasi apa pun. Ambang 1,2 menuntut kejadian bersamanya minimal 20% lebih sering "
-     "daripada kebetulan. Tanpa ini, aturan semacam First_Lien maka Originated akan lolos cuma "
-     "karena mayoritas aplikasi memang first lien dan mayoritas memang disetujui."),
-    ("Kenapa confidence minimal 55%?",
-     "Karena aturannya harus mengalahkan tebakan dasar. Base rate-nya 23,1% Denied dan 76,9% "
-     "Originated. Untuk aturan penolakan, 55% itu lebih dari dua kali base rate-nya, sekaligus "
-     "melewati batas mayoritas. Jadi kalau aturannya bilang Denied, lebih dari separuh kasus yang "
-     "cocok memang benar ditolak."),
-    ("Kenapa itemset dibatasi maksimal 3?",
-     "Supaya masih bisa dipakai dan tidak meledak jumlahnya. Aturan dengan 5 sampai 6 syarat "
-     "praktis tidak bisa dijalankan tim underwriting, dan jumlah kombinasinya tumbuh sangat cepat "
-     "seiring panjang itemset. Tiga syarat sudah cukup menangkap interaksi seperti DTI ditambah "
-     "jenis lien dan jenis loan."),
+    (
+        "Kenapa minimum support 2%?",
+        "Di 67.827 aplikasi berkeputusan, 2% itu sekitar 1.357 aplikasi. Cukup besar supaya "
+        "confidence-nya stabil dan tidak lahir dari segelintir kasus, tapi masih cukup kecil supaya "
+        "segmen minoritas seperti manufactured housing tidak ikut tersapu sebelum sempat dianalisis.",
+    ),
+    (
+        "Kenapa lift harus di atas 1,2?",
+        "Lift 1,0 artinya antecedent dan hasilnya saling bebas, jadi aturannya tidak memberi "
+        "informasi apa pun. Ambang 1,2 menuntut kejadian bersamanya minimal 20% lebih sering "
+        "daripada kebetulan. Tanpa ini, aturan semacam First_Lien maka Originated akan lolos cuma "
+        "karena mayoritas aplikasi memang first lien dan mayoritas memang disetujui.",
+    ),
+    (
+        "Kenapa confidence minimal 55%?",
+        "Karena aturannya harus mengalahkan tebakan dasar. Base rate-nya 23,1% Denied dan 76,9% "
+        "Originated. Untuk aturan penolakan, 55% itu lebih dari dua kali base rate-nya, sekaligus "
+        "melewati batas mayoritas. Jadi kalau aturannya bilang Denied, lebih dari separuh kasus yang "
+        "cocok memang benar ditolak.",
+    ),
+    (
+        "Kenapa itemset dibatasi maksimal 3?",
+        "Supaya masih bisa dipakai dan tidak meledak jumlahnya. Aturan dengan 5 sampai 6 syarat "
+        "praktis tidak bisa dijalankan tim underwriting, dan jumlah kombinasinya tumbuh sangat cepat "
+        "seiring panjang itemset. Tiga syarat sudah cukup menangkap interaksi seperti DTI ditambah "
+        "jenis lien dan jenis loan.",
+    ),
 ]
 
 WHY_RULE_PRUNING = [
-    ("Kenapa dari 28 aturan cuma 11 yang dipakai?",
-     "Karena lolos ambang belum tentu menambah pengetahuan. Menempelkan derived_race=White atau "
-     "First_Lien ke aturan DTI di atas 60% menghasilkan aturan yang tetap lolos semua ambang, "
-     "padahal confidence-nya nyaris sama dengan aturan induknya. Itu cuma pengulangan dengan kata "
-     "tambahan, dan berbahaya karena bisa dibaca seolah ras jadi faktor penolakan padahal tidak "
-     "menambah daya pisah sama sekali."),
-    ("Bagaimana cara memangkasnya?",
-     "Improvement filter. Sebuah aturan cuma dipertahankan kalau confidence-nya mengungguli semua "
-     "sub-rule-nya minimal 2 poin persen. Hasilnya 28 kandidat menyusut jadi 11 aturan yang "
-     "benar-benar berbeda satu sama lain."),
-    ("Kenapa aturannya masih diuji chi-square dan Wilson CI?",
-     "Support dan confidence tidak memberi tahu apakah polanya bisa muncul karena kebetulan. "
-     "Chi-square menguji apakah asosiasinya beda nyata dari kondisi saling bebas, sedangkan Wilson "
-     "confidence interval memberi rentang ketidakpastian yang tetap masuk akal saat n-nya kecil "
-     "atau proporsinya mendekati 0 dan 1."),
+    (
+        "Kenapa dari 28 aturan cuma 11 yang dipakai?",
+        "Karena lolos ambang belum tentu menambah pengetahuan. Menempelkan derived_race=White atau "
+        "First_Lien ke aturan DTI di atas 60% menghasilkan aturan yang tetap lolos semua ambang, "
+        "padahal confidence-nya nyaris sama dengan aturan induknya. Itu cuma pengulangan dengan kata "
+        "tambahan, dan berbahaya karena bisa dibaca seolah ras jadi faktor penolakan padahal tidak "
+        "menambah daya pisah sama sekali.",
+    ),
+    (
+        "Bagaimana cara memangkasnya?",
+        "Improvement filter. Sebuah aturan cuma dipertahankan kalau confidence-nya mengungguli semua "
+        "sub-rule-nya minimal 2 poin persen. Hasilnya 28 kandidat menyusut jadi 11 aturan yang "
+        "benar-benar berbeda satu sama lain.",
+    ),
+    (
+        "Kenapa aturannya masih diuji chi-square dan Wilson CI?",
+        "Support dan confidence tidak memberi tahu apakah polanya bisa muncul karena kebetulan. "
+        "Chi-square menguji apakah asosiasinya beda nyata dari kondisi saling bebas, sedangkan Wilson "
+        "confidence interval memberi rentang ketidakpastian yang tetap masuk akal saat n-nya kecil "
+        "atau proporsinya mendekati 0 dan 1.",
+    ),
 ]
 
 WHY_DETECTORS = [
-    ("Kenapa pakai lima detektor sekaligus?",
-     "Karena tiap metode punya titik buta, dan ada dua cara pandang yang menangkap hal berbeda. "
-     "IQR, Z-score, dan Isolation Forest melihat secara global, mencari nilai yang menyimpang dari "
-     "distribusi seluruh data. LOF dan DBSCAN-noise melihat secara kontekstual, mencari baris yang "
-     "wajar di tiap fitur tapi aneh dibanding tetangganya. Angka taksonomi membuktikan keduanya "
-     "memang beda: cuma 476 baris yang tertangkap dua-duanya, sementara 9.959 cuma global dan 589 "
-     "cuma kontekstual."),
-    ("Kenapa ambangnya 3 dari 5 suara?",
-     "Untuk menekan false positive. Satu metode gampang menandai baris yang sebenarnya wajar, tapi "
-     "lima detektor dengan prinsip berbeda jauh lebih sulit sepakat secara kebetulan. Ambang ini "
-     "juga memaksa minimal satu metode global dan satu kontekstual ikut setuju di sebagian besar "
-     "kasus."),
-    ("Kenapa contamination-nya 1%?",
-     "Ini asumsi kerja soal berapa banyak baris yang masuk akal ditinjau manual, bukan klaim bahwa "
-     "persis 1% datanya salah. Angkanya dipilih supaya antrean tinjauan masih realistis buat tim "
-     "manusia. Parameter ini menentukan ambang skor, bukan benar atau salahnya sebuah baris, dan "
-     "itu sebabnya keputusan akhirnya tetap lewat triase."),
+    (
+        "Kenapa pakai lima detektor sekaligus?",
+        "Karena tiap metode punya titik buta, dan ada dua cara pandang yang menangkap hal berbeda. "
+        "IQR, Z-score, dan Isolation Forest melihat secara global, mencari nilai yang menyimpang dari "
+        "distribusi seluruh data. LOF dan DBSCAN-noise melihat secara kontekstual, mencari baris yang "
+        "wajar di tiap fitur tapi aneh dibanding tetangganya. Angka taksonomi membuktikan keduanya "
+        "memang beda: cuma 476 baris yang tertangkap dua-duanya, sementara 9.959 cuma global dan 589 "
+        "cuma kontekstual.",
+    ),
+    (
+        "Kenapa ambangnya 3 dari 5 suara?",
+        "Untuk menekan false positive. Satu metode gampang menandai baris yang sebenarnya wajar, tapi "
+        "lima detektor dengan prinsip berbeda jauh lebih sulit sepakat secara kebetulan. Ambang ini "
+        "juga memaksa minimal satu metode global dan satu kontekstual ikut setuju di sebagian besar "
+        "kasus.",
+    ),
+    (
+        "Kenapa contamination-nya 1%?",
+        "Ini asumsi kerja soal berapa banyak baris yang masuk akal ditinjau manual, bukan klaim bahwa "
+        "persis 1% datanya salah. Angkanya dipilih supaya antrean tinjauan masih realistis buat tim "
+        "manusia. Parameter ini menentukan ambang skor, bukan benar atau salahnya sebuah baris, dan "
+        "itu sebabnya keputusan akhirnya tetap lewat triase.",
+    ),
 ]
 
 WHY_TAXONOMY = [
-    ("Kenapa outlier kolektif dipisah sendiri?",
-     "Karena kelima detektor menilai baris satu per satu, jadi secara desain buta terhadap pola "
-     "kelompok. Semua 2.413 loan di atas $1 juta berakhiran 5.000, tapi tidak ada satu pun loan "
-     "yang janggal kalau dilihat sendirian. Yang janggal itu polanya secara bersama, dan itu jejak "
-     "aturan pembulatan HMDA, bukan sinyal risiko."),
-    ("Kenapa outlier global jauh lebih banyak dari kontekstual?",
-     "Karena metode global menandai baris yang ekstrem di fitur mana pun, dan dengan data sebesar "
-     "ini selalu ada ekor distribusi yang panjang. Metode kontekstual jauh lebih selektif karena "
-     "menuntut baris itu aneh relatif terhadap tetangganya, bukan cuma besar nilainya."),
+    (
+        "Kenapa outlier kolektif dipisah sendiri?",
+        "Karena kelima detektor menilai baris satu per satu, jadi secara desain buta terhadap pola "
+        "kelompok. Semua 2.413 loan di atas $1 juta berakhiran 5.000, tapi tidak ada satu pun loan "
+        "yang janggal kalau dilihat sendirian. Yang janggal itu polanya secara bersama, dan itu jejak "
+        "aturan pembulatan HMDA, bukan sinyal risiko.",
+    ),
+    (
+        "Kenapa outlier global jauh lebih banyak dari kontekstual?",
+        "Karena metode global menandai baris yang ekstrem di fitur mana pun, dan dengan data sebesar "
+        "ini selalu ada ekor distribusi yang panjang. Metode kontekstual jauh lebih selektif karena "
+        "menuntut baris itu aneh relatif terhadap tetangganya, bukan cuma besar nilainya.",
+    ),
 ]
 
 WHY_TRIAGE = [
-    ("Kenapa 15 baris teratas ditinjau manual, bukan langsung dibuang?",
-     "Karena ekstrem tidak sama dengan salah. Jumbo loan $9 juta itu ekstrem tapi sah, sedangkan "
-     "CLTV 900% mustahil secara hitungan. Membedakannya butuh cek konsistensi internal, misalnya "
-     "apakah CLTV dikali property value masih cocok dengan loan ini ditambah senior lien, dan "
-     "apakah income-nya masuk akal untuk membayar utang segitu."),
-    ("Apa hasilnya, dan kenapa itu penting?",
-     "Semua 15 baris teratas berakhir dengan verdict RARE BUT VALID, tidak satu pun kesalahan "
-     "data. Artinya kalau ensemble ini dipakai sebagai aturan hapus otomatis, 15 aplikasi yang sah "
-     "akan ikut terbuang."),
+    (
+        "Kenapa 15 baris teratas ditinjau manual, bukan langsung dibuang?",
+        "Karena ekstrem tidak sama dengan salah. Jumbo loan $9 juta itu ekstrem tapi sah, sedangkan "
+        "CLTV 900% mustahil secara hitungan. Membedakannya butuh cek konsistensi internal, misalnya "
+        "apakah CLTV dikali property value masih cocok dengan loan ini ditambah senior lien, dan "
+        "apakah income-nya masuk akal untuk membayar utang segitu.",
+    ),
+    (
+        "Apa hasilnya, dan kenapa itu penting?",
+        "Semua 15 baris teratas berakhir dengan verdict RARE BUT VALID, tidak satu pun kesalahan "
+        "data. Artinya kalau ensemble ini dipakai sebagai aturan hapus otomatis, 15 aplikasi yang sah "
+        "akan ikut terbuang.",
+    ),
 ]
 
 # ============================================================ Fase 1 (preprocessing)
@@ -2887,13 +3059,22 @@ _ROLE_LABEL = {
 def _stat_tile(label, value, color=NAVY):
     return html.Div(
         [
-            html.Div(value, style={"fontSize": "24px", "fontWeight": "800", "color": color}),
-            html.Div(label, style={"fontSize": "11px", "color": MUTE, "marginTop": "2px"}),
+            html.Div(
+                value, style={"fontSize": "24px", "fontWeight": "800", "color": color}
+            ),
+            html.Div(
+                label, style={"fontSize": "11px", "color": MUTE, "marginTop": "2px"}
+            ),
         ],
         className="hmda-card",
         style={
-            "flex": "1", "minWidth": "150px", "background": CARD, "borderRadius": "14px",
-            "padding": "14px 16px", "boxShadow": SOFT_SHADOW, "border": f"1px solid {BORDER}",
+            "flex": "1",
+            "minWidth": "150px",
+            "background": CARD,
+            "borderRadius": "14px",
+            "padding": "14px 16px",
+            "boxShadow": SOFT_SHADOW,
+            "border": f"1px solid {BORDER}",
         },
     )
 
@@ -2917,33 +3098,43 @@ LOADTEST_CONC = [
 ]
 
 WHY_LOADTEST = [
-    ("Mengapa yang diuji callback tab, bukan hanya halaman utama?",
-     "Karena halaman utama hanya mengirim kerangka HTML statis. Kerja sebenarnya terjadi di "
-     "endpoint /_dash-update-component, tempat callback membangun seluruh grafik dan tabel "
-     "sebuah tab. Menguji halaman statis saja akan menghasilkan angka yang terlihat bagus "
-     "tetapi tidak mewakili beban nyata."),
-    ("Mengapa dibedakan cold dan warm?",
-     "Karena fungsi render memakai cache (lru_cache maxsize 8) sementara aplikasi hanya punya "
-     "5 tab, sehingga tidak pernah ada eviction: tiap tab hanya mahal sekali per proses. "
-     "Melaporkan angka warm saja akan menyembunyikan biaya render pertama, dan itu justru "
-     "biaya yang dibayar pengguna pertama setiap kali proses baru dimulai."),
-    ("Mengapa throughput berhenti di sekitar 220 req/s?",
-     "Karena ada bottleneck yang terserialisasi: GIL Python ditambah development server. "
-     "Buktinya terlihat dari pola angkanya - dari concurrency 5 ke 25 throughput tetap "
-     "(208 → 217 req/s) sementara latency naik hampir linear (22 → 110 ms). Artinya "
-     "permintaan tambahan tidak diproses lebih paralel, hanya mengantre lebih panjang."),
-    ("Mengapa angka ini bukan angka produksi?",
-     "Tiga sebab: (1) pengujian memakai Flask development server, yang secara eksplisit "
-     "memperingatkan dirinya bukan untuk produksi, sedangkan Vercel memakai runtime WSGI "
-     "sendiri; (2) pengujian berjalan di localhost sehingga tanpa latency jaringan - payload "
-     "276 KB milik Fase 4 akan jauh lebih terasa pada koneksi nyata; (3) hanya satu mesin "
-     "penguji, tanpa variasi geografis. Angka ini valid sebagai profil relatif antar tab, "
-     "bukan sebagai kapasitas produksi."),
-    ("Apa implikasinya untuk deployment Vercel?",
-     "Cold start 2,44 detik dan memori 236 MB dibayar ulang setiap kali instance serverless "
-     "baru dimulai, dan penyebab utamanya sama: hmda_approve_deny.csv berukuran 27 MB dibaca "
-     "saat import. Merampingkan file itu ke kolom yang benar-benar dipakai What-If akan "
-     "memangkas cold start, pemakaian memori, dan ukuran bundle sekaligus."),
+    (
+        "Mengapa yang diuji callback tab, bukan hanya halaman utama?",
+        "Karena halaman utama hanya mengirim kerangka HTML statis. Kerja sebenarnya terjadi di "
+        "endpoint /_dash-update-component, tempat callback membangun seluruh grafik dan tabel "
+        "sebuah tab. Menguji halaman statis saja akan menghasilkan angka yang terlihat bagus "
+        "tetapi tidak mewakili beban nyata.",
+    ),
+    (
+        "Mengapa dibedakan cold dan warm?",
+        "Karena fungsi render memakai cache (lru_cache maxsize 8) sementara aplikasi hanya punya "
+        "5 tab, sehingga tidak pernah ada eviction: tiap tab hanya mahal sekali per proses. "
+        "Melaporkan angka warm saja akan menyembunyikan biaya render pertama, dan itu justru "
+        "biaya yang dibayar pengguna pertama setiap kali proses baru dimulai.",
+    ),
+    (
+        "Mengapa throughput berhenti di sekitar 220 req/s?",
+        "Karena ada bottleneck yang terserialisasi: GIL Python ditambah development server. "
+        "Buktinya terlihat dari pola angkanya - dari concurrency 5 ke 25 throughput tetap "
+        "(208 → 217 req/s) sementara latency naik hampir linear (22 → 110 ms). Artinya "
+        "permintaan tambahan tidak diproses lebih paralel, hanya mengantre lebih panjang.",
+    ),
+    (
+        "Mengapa angka ini bukan angka produksi?",
+        "Tiga sebab: (1) pengujian memakai Flask development server, yang secara eksplisit "
+        "memperingatkan dirinya bukan untuk produksi, sedangkan Vercel memakai runtime WSGI "
+        "sendiri; (2) pengujian berjalan di localhost sehingga tanpa latency jaringan - payload "
+        "276 KB milik Fase 4 akan jauh lebih terasa pada koneksi nyata; (3) hanya satu mesin "
+        "penguji, tanpa variasi geografis. Angka ini valid sebagai profil relatif antar tab, "
+        "bukan sebagai kapasitas produksi.",
+    ),
+    (
+        "Apa implikasinya untuk deployment Vercel?",
+        "Cold start 2,44 detik dan memori 236 MB dibayar ulang setiap kali instance serverless "
+        "baru dimulai, dan penyebab utamanya sama: hmda_approve_deny.csv berukuran 27 MB dibaca "
+        "saat import. Merampingkan file itu ke kolom yang benar-benar dipakai What-If akan "
+        "memangkas cold start, pemakaian memori, dan ukuran bundle sekaligus.",
+    ),
 ]
 
 
@@ -2959,17 +3150,32 @@ def _load_test_panel():
             _stat_tile("Cold start", "2,44 s", AMBER),
             _stat_tile("Memori (RSS)", "236 MB", NAVY),
         ],
-        style={"display": "flex", "gap": "14px", "flexWrap": "wrap", "marginBottom": "16px"},
+        style={
+            "display": "flex",
+            "gap": "14px",
+            "flexWrap": "wrap",
+            "marginBottom": "16px",
+        },
     )
 
     cold_df = pd.DataFrame(
-        [{"Tab": t, "Render pertama (ms)": ms, "Ukuran respons (KB)": kb}
-         for t, ms, kb in LOADTEST_COLD]
+        [
+            {"Tab": t, "Render pertama (ms)": ms, "Ukuran respons (KB)": kb}
+            for t, ms, kb in LOADTEST_COLD
+        ]
     )
     conc_df = pd.DataFrame(
-        [{"Concurrency": c, "Throughput (req/s)": tp, "Rata-rata (ms)": mean,
-          "p50 (ms)": p50, "p95 (ms)": p95, "p99 (ms)": p99}
-         for c, tp, mean, p50, p95, p99 in LOADTEST_CONC]
+        [
+            {
+                "Concurrency": c,
+                "Throughput (req/s)": tp,
+                "Rata-rata (ms)": mean,
+                "p50 (ms)": p50,
+                "p95 (ms)": p95,
+                "p99 (ms)": p99,
+            }
+            for c, tp, mean, p50, p95, p99 in LOADTEST_CONC
+        ]
     )
 
     return panel(
@@ -2983,29 +3189,53 @@ def _load_test_panel():
             tiles,
             html.Div(
                 [
-                    html.H4("Render pertama tiap tab (cache kosong)",
-                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    html.H4(
+                        "Render pertama tiap tab (cache kosong)",
+                        style={
+                            "fontSize": "13px",
+                            "color": NAVY,
+                            "margin": "6px 0 8px",
+                        },
+                    ),
                     _table(cold_df),
                     html.Div(style={"height": "16px"}),
-                    html.H4("Penskalaan terhadap concurrency (100 request, cache terisi)",
-                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    html.H4(
+                        "Penskalaan terhadap concurrency (100 request, cache terisi)",
+                        style={
+                            "fontSize": "13px",
+                            "color": NAVY,
+                            "margin": "6px 0 8px",
+                        },
+                    ),
                     _table(conc_df),
                     html.Div(style={"height": "16px"}),
-                    html.H4("Beban berkelanjutan 30 detik (concurrency 20)",
-                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    html.H4(
+                        "Beban berkelanjutan 30 detik (concurrency 20)",
+                        style={
+                            "fontSize": "13px",
+                            "color": NAVY,
+                            "margin": "6px 0 8px",
+                        },
+                    ),
                     html.P(
                         "5.507 request · 0 error · rata-rata 28 ms · p50 28 ms · p95 45 ms · p99 58 ms · maks 85 ms. "
                         "Latency stabil sepanjang pengujian, tanpa degradasi progresif maupun "
                         "indikasi kebocoran memori. Endpoint statis melayani 581-685 req/s.",
-                        style={"fontSize": "12px", "color": INK, "margin": "0 0 14px",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "margin": "0 0 14px",
+                            "lineHeight": "1.6",
+                        },
                     ),
                 ]
             ),
             html.Div(
                 [
-                    html.B("Batas keberlakuan angka ini. ",
-                           style={"fontSize": "12px", "color": NAVY}),
+                    html.B(
+                        "Batas keberlakuan angka ini. ",
+                        style={"fontSize": "12px", "color": NAVY},
+                    ),
                     html.Span(
                         "Pengujian memakai Flask development server di localhost, jadi tanpa "
                         "latency jaringan dan bukan runtime yang dipakai Vercel. Angka warm juga "
@@ -3054,9 +3284,20 @@ def _clustering_comparison_panel():
             "ari_vs_kmeans": "ARI vs K-Means",
         }
     )
-    show = [c for c in ["Metode", "Cakupan", "Jumlah cluster", "Noise", "Silhouette ↑",
-                        "Davies-Bouldin ↓", "Calinski-Harabasz ↑", "ARI vs K-Means"]
-            if c in d.columns]
+    show = [
+        c
+        for c in [
+            "Metode",
+            "Cakupan",
+            "Jumlah cluster",
+            "Noise",
+            "Silhouette ↑",
+            "Davies-Bouldin ↓",
+            "Calinski-Harabasz ↑",
+            "ARI vs K-Means",
+        ]
+        if c in d.columns
+    ]
 
     # Verdict computed from the data, not hard-coded, so it stays true after a re-run.
     same = clustering_cmp[clustering_cmp["scope"].astype(str).str.contains("4.000")]
@@ -3082,25 +3323,42 @@ def _clustering_comparison_panel():
                             "Calinski-Harabasz makin tinggi makin baik. ARI mengukur kesepakatan "
                             "dengan K-Means: 1,0 identik, 0 acak.",
                         ],
-                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6",
-                               "margin": "12px 0 8px"},
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "lineHeight": "1.6",
+                            "margin": "12px 0 8px",
+                        },
                     ),
                     html.P(
-                        [html.B("Kesimpulan: "), verdict, " K-Means dipakai sebagai segmentasi "
-                         "utama karena unggul pada ketiga metrik validitas sekaligus satu-satunya "
-                         "yang skalabel ke seluruh 99.995 aplikasi. Ward hierarchical menyepakatinya "
-                         "kuat (ARI 0,906), yang menegaskan struktur 7 segmen memang ada di data dan "
-                         "bukan artefak satu algoritma. CLARANS lebih rendah (ARI 0,710) karena "
-                         "mengoptimalkan medoid, bukan centroid, sehingga wajar berbeda."],
-                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0"},
+                        [
+                            html.B("Kesimpulan: "),
+                            verdict,
+                            " K-Means dipakai sebagai segmentasi "
+                            "utama karena unggul pada ketiga metrik validitas sekaligus satu-satunya "
+                            "yang skalabel ke seluruh 99.995 aplikasi. Ward hierarchical menyepakatinya "
+                            "kuat (ARI 0,906), yang menegaskan struktur 7 segmen memang ada di data dan "
+                            "bukan artefak satu algoritma. CLARANS lebih rendah (ARI 0,710) karena "
+                            "mengoptimalkan medoid, bukan centroid, sehingga wajar berbeda.",
+                        ],
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "lineHeight": "1.6",
+                            "margin": "0",
+                        },
                     ),
                     html.P(
                         "Catatan kejujuran metrik: baris DBSCAN diukur pada sampel 20.000 dan "
                         "mengecualikan noise, jadi angkanya tidak sebanding langsung dengan baris "
-                        "sampel 4.000. Baris \"K-Means (pada sampel 4.000)\" sengaja disertakan "
+                        'sampel 4.000. Baris "K-Means (pada sampel 4.000)" sengaja disertakan '
                         "sebagai pembanding setara.",
-                        style={"fontSize": "11.5px", "color": MUTE, "lineHeight": "1.6",
-                               "margin": "10px 0 0"},
+                        style={
+                            "fontSize": "11.5px",
+                            "color": MUTE,
+                            "lineHeight": "1.6",
+                            "margin": "10px 0 0",
+                        },
                     ),
                 ]
             ),
@@ -3132,7 +3390,12 @@ def _fase1_content():
             _stat_tile("Kolom dibuang", f"{int(s['fields_dropped']):,}", RED),
             _stat_tile("Sel kosong tersisa", f"{int(s['residual_missing_cells']):,}"),
         ],
-        style={"display": "flex", "gap": "14px", "flexWrap": "wrap", "marginBottom": "16px"},
+        style={
+            "display": "flex",
+            "gap": "14px",
+            "flexWrap": "wrap",
+            "marginBottom": "16px",
+        },
     )
     children = [
         panel(
@@ -3158,19 +3421,49 @@ def _fase1_content():
                 ),
                 html.Ul(
                     [
-                        html.Li([html.B("CONTINUOUS"), " - fitur bilangan riil (income, loan_amount, "
-                                 "property_value, CLTV). Diimputasi median lalu diskalakan."]),
-                        html.Li([html.B("STRING_BAND"), " - fitur rentang angka (debt_to_income_ratio, "
-                                 "applicant_age). Dipertahankan sebagai band karena HMDA melaporkannya "
-                                 "sebagai rentang, bukan satu angka."]),
-                        html.Li([html.B("CATEG_CODE"), " - kategorikal berkode (action_taken, "
-                                 "loan_purpose, occupancy_type). Diterjemahkan dari kode angka ke label bermakna."]),
-                        html.Li([html.B("TEXT_CATEG"), " - kategorikal teks (state_code, derived_race). "
-                                 "Dipakai apa adanya."]),
-                        html.Li([html.B("IDS"), " - pengenal (lei, census_tract). Dikecualikan dari pemodelan."]),
+                        html.Li(
+                            [
+                                html.B("CONTINUOUS"),
+                                " - fitur bilangan riil (income, loan_amount, "
+                                "property_value, CLTV). Diimputasi median lalu diskalakan.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("STRING_BAND"),
+                                " - fitur rentang angka (debt_to_income_ratio, "
+                                "applicant_age). Dipertahankan sebagai band karena HMDA melaporkannya "
+                                "sebagai rentang, bukan satu angka.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("CATEG_CODE"),
+                                " - kategorikal berkode (action_taken, "
+                                "loan_purpose, occupancy_type). Diterjemahkan dari kode angka ke label bermakna.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("TEXT_CATEG"),
+                                " - kategorikal teks (state_code, derived_race). "
+                                "Dipakai apa adanya.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("IDS"),
+                                " - pengenal (lei, census_tract). Dikecualikan dari pemodelan.",
+                            ]
+                        ),
                     ],
-                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
-                           "paddingLeft": "18px"},
+                    style={
+                        "fontSize": "12px",
+                        "color": INK,
+                        "lineHeight": "1.6",
+                        "margin": "0",
+                        "paddingLeft": "18px",
+                    },
                 ),
                 html.P(
                     "Pemisahan ini penting karena tiap tipe butuh pembersihan, encoding, dan "
@@ -3187,12 +3480,21 @@ def _fase1_content():
         m = phase1_missing.copy()
         m["fate_label"] = m["fate"].map(_FATE_LABEL).fillna(m["fate"])
         fig_m = px.bar(
-            m, x="missing_pct", y="field", orientation="h", color="fate_label",
+            m,
+            x="missing_pct",
+            y="field",
+            orientation="h",
+            color="fate_label",
             color_discrete_map={_FATE_LABEL[k]: v for k, v in _FATE_COLOR.items()},
-            labels={"missing_pct": "% nilai kosong", "field": "", "fate_label": "Penanganan"},
+            labels={
+                "missing_pct": "% nilai kosong",
+                "field": "",
+                "fate_label": "Penanganan",
+            },
         )
         fig_m.update_layout(
-            template="hmda", height=max(360, 22 * len(m)),
+            template="hmda",
+            height=max(360, 22 * len(m)),
             yaxis={"categoryorder": "total ascending"},
             legend={"orientation": "h", "y": -0.14, "title": ""},
         )
@@ -3211,22 +3513,47 @@ def _fase1_content():
             [
                 html.Ul(
                     [
-                        html.Li([html.B("Buang kolom >60% hilang."), " Missingness struktural: "
-                                 "mengimputasi kolom yang mayoritasnya kosong sama saja mengarang data."]),
-                        html.Li([html.B("Fitur CONTINUOUS -> imputasi median."), " Median dipilih, bukan "
-                                 "mean, karena distribusi income/loan/property sangat skewed dengan outlier "
-                                 "ekstrem; median tahan terhadap nilai ekstrem sehingga pusat distribusi tidak "
-                                 "tertarik oleh segelintir nilai raksasa. Median juga transparan dan mudah "
-                                 "diaudit - penting untuk data regulasi. Metode seperti KNN-imputation sengaja "
-                                 "dihindari: mahal pada 100.000 baris dan kurang dapat dijelaskan."]),
-                        html.Li([html.B("Fitur kategorikal -> diisi \"Unknown\"."), " Nilai tidak ditebak. "
-                                 "\"Hilang\" sering bermakna (mis. Exempt / tidak dilaporkan), jadi "
-                                 "dipertahankan sebagai kategori tersendiri, bukan disamarkan."]),
-                        html.Li([html.B("Indikator missingness (_was_missing)."), " Ditambahkan untuk kolom "
-                                 "sinyal utama, sehingga jejak imputasi tetap terekam dan dapat diaudit."]),
+                        html.Li(
+                            [
+                                html.B("Buang kolom >60% hilang."),
+                                " Missingness struktural: "
+                                "mengimputasi kolom yang mayoritasnya kosong sama saja mengarang data.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("Fitur CONTINUOUS -> imputasi median."),
+                                " Median dipilih, bukan "
+                                "mean, karena distribusi income/loan/property sangat skewed dengan outlier "
+                                "ekstrem; median tahan terhadap nilai ekstrem sehingga pusat distribusi tidak "
+                                "tertarik oleh segelintir nilai raksasa. Median juga transparan dan mudah "
+                                "diaudit - penting untuk data regulasi. Metode seperti KNN-imputation sengaja "
+                                "dihindari: mahal pada 100.000 baris dan kurang dapat dijelaskan.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B('Fitur kategorikal -> diisi "Unknown".'),
+                                " Nilai tidak ditebak. "
+                                '"Hilang" sering bermakna (mis. Exempt / tidak dilaporkan), jadi '
+                                "dipertahankan sebagai kategori tersendiri, bukan disamarkan.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("Indikator missingness (_was_missing)."),
+                                " Ditambahkan untuk kolom "
+                                "sinyal utama, sehingga jejak imputasi tetap terekam dan dapat diaudit.",
+                            ]
+                        ),
                     ],
-                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
-                           "paddingLeft": "18px"},
+                    style={
+                        "fontSize": "12px",
+                        "color": INK,
+                        "lineHeight": "1.6",
+                        "margin": "0",
+                        "paddingLeft": "18px",
+                    },
                 ),
             ],
             sub="Nilai hilang tidak ditangani dengan satu metode seragam, melainkan sesuai tipe fitur "
@@ -3241,19 +3568,28 @@ def _fase1_content():
             color_arg = {
                 "color": "role_label",
                 "color_discrete_map": {
-                    "Kandidat kuat": GREEN, "Kandidat sedang": STEEL, "Lemah / pendukung": MUTE,
+                    "Kandidat kuat": GREEN,
+                    "Kandidat sedang": STEEL,
+                    "Lemah / pendukung": MUTE,
                 },
             }
         else:
             color_arg = {}
         fig_f = px.bar(
-            f, x="score", y="feature", orientation="h",
-            labels={"score": "Skor gabungan (korelasi + mutual information)", "feature": "",
-                    "role_label": "Peran"},
+            f,
+            x="score",
+            y="feature",
+            orientation="h",
+            labels={
+                "score": "Skor gabungan (korelasi + mutual information)",
+                "feature": "",
+                "role_label": "Peran",
+            },
             **color_arg,
         )
         fig_f.update_layout(
-            template="hmda", height=max(360, 26 * len(f)),
+            template="hmda",
+            height=max(360, 26 * len(f)),
             legend={"orientation": "h", "y": -0.14, "title": ""},
         )
         children.append(
@@ -3272,21 +3608,41 @@ def _fase1_content():
             [
                 html.Ul(
                     [
-                        html.Li([html.B("Clustering (Fase 2)."), " Fitur kontinu di-winsorize pada 1%/99% "
-                                 "(mengekang ekor ekstrem agar tidak mendominasi jarak), lalu diskalakan "
-                                 "dengan StandardScaler (z-score) sehingga setiap fitur berkontribusi setara "
-                                 "pada jarak Euclidean K-Means."]),
-                        html.Li([html.B("Deteksi anomali (Fase 4)."), " Memakai RobustScaler (berpusat pada "
-                                 "median, diskalakan dengan IQR). Robust dipilih karena penskalaan tidak boleh "
-                                 "terdistorsi oleh outlier yang justru sedang dicari; median dan IQR tidak "
-                                 "sensitif terhadap nilai ekstrem, sehingga anomali sejati tetap jauh dari "
-                                 "pusat alih-alih menekan skala."]),
-                        html.Li([html.B("Binning domain."), " Diterapkan pada income, loan amount, property "
-                                 "value, CLTV, tract income, dan tract minority share agar rentang mentah "
-                                 "menjadi kategori yang mudah dibaca untuk association rule mining (Fase 3)."]),
+                        html.Li(
+                            [
+                                html.B("Clustering (Fase 2)."),
+                                " Fitur kontinu di-winsorize pada 1%/99% "
+                                "(mengekang ekor ekstrem agar tidak mendominasi jarak), lalu diskalakan "
+                                "dengan StandardScaler (z-score) sehingga setiap fitur berkontribusi setara "
+                                "pada jarak Euclidean K-Means.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("Deteksi anomali (Fase 4)."),
+                                " Memakai RobustScaler (berpusat pada "
+                                "median, diskalakan dengan IQR). Robust dipilih karena penskalaan tidak boleh "
+                                "terdistorsi oleh outlier yang justru sedang dicari; median dan IQR tidak "
+                                "sensitif terhadap nilai ekstrem, sehingga anomali sejati tetap jauh dari "
+                                "pusat alih-alih menekan skala.",
+                            ]
+                        ),
+                        html.Li(
+                            [
+                                html.B("Binning domain."),
+                                " Diterapkan pada income, loan amount, property "
+                                "value, CLTV, tract income, dan tract minority share agar rentang mentah "
+                                "menjadi kategori yang mudah dibaca untuk association rule mining (Fase 3).",
+                            ]
+                        ),
                     ],
-                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
-                           "paddingLeft": "18px"},
+                    style={
+                        "fontSize": "12px",
+                        "color": INK,
+                        "lineHeight": "1.6",
+                        "margin": "0",
+                        "paddingLeft": "18px",
+                    },
                 ),
                 html.P(
                     "Penskalaan sengaja berbeda untuk clustering dan deteksi anomali karena tujuannya "
@@ -3318,13 +3674,66 @@ def render(tab):
     elif tab == "fase4":
         tab = "anomalies"
     elif tab == "fase5":
-        return html.Div(
+        sections = [
+            ("f5-geo", "Geografi", render("geography")),
+            ("f5-whatif", "What-If", render("whatif")),
+            ("f5-fair", "Keadilan", render("fairness")),
+            ("f5-load", "Uji beban", _load_test_panel()),
+        ]
+        nav = html.Div(
             [
-                render("geography"),
-                render("whatif"),
-                render("fairness"),
-                _load_test_panel(),
+                html.Div(
+                    "Bagian",
+                    style={
+                        "fontSize": "10.5px",
+                        "fontWeight": "800",
+                        "letterSpacing": "1.2px",
+                        "color": MUTE,
+                        "marginBottom": "10px",
+                    },
+                ),
             ]
+            + [
+                html.A(
+                    title,
+                    href=f"#{sid}",
+                    className="hmda-navlink",
+                    style={
+                        "display": "block",
+                        "padding": "8px 10px",
+                        "marginBottom": "4px",
+                        "borderRadius": "8px",
+                        "fontSize": "12.5px",
+                        "fontWeight": "600",
+                        "color": NAVY,
+                        "textDecoration": "none",
+                        "borderLeft": f"3px solid {GRID}",
+                    },
+                )
+                for sid, title, _ in sections
+            ],
+            style={
+                "position": "sticky",
+                "top": "12px",
+                "alignSelf": "flex-start",
+                "flex": "0 0 170px",
+                "background": CARD,
+                "borderRadius": "14px",
+                "padding": "14px 12px",
+                "border": f"1px solid {BORDER}",
+                "boxShadow": SOFT_SHADOW,
+            },
+        )
+        body = html.Div(
+            [
+                html.Div(content, id=sid, style={"scrollMarginTop": "12px"})
+                for sid, _, content in sections
+            ],
+            style={"flex": "1", "minWidth": "0"},
+        )
+        return html.Div(
+            [nav, body],
+            style={"display": "flex", "gap": "18px", "alignItems": "flex-start"},
         )
 
     if tab == "summary":
@@ -3474,7 +3883,11 @@ def render(tab):
                             "persentase. Bagian bisnis di bawah menampilkan yang lolos filter itu; daftar kandidat lengkap, "
                             "berikut improvement filter-nya, ada lebih jauh ke bawah bagi yang ingin melihat semua "
                             "temuan miner.",
-                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                            style={
+                                "fontSize": "12px",
+                                "color": INK,
+                                "margin": "0 0 12px",
+                            },
                         ),
                         why(WHY_RULE_PRUNING),
                     ],
@@ -3486,7 +3899,10 @@ def render(tab):
                             id="net-outcome",
                             value="All",
                             options=[
-                                {"label": " Semua (Denied + Originated)", "value": "All"},
+                                {
+                                    "label": " Semua (Denied + Originated)",
+                                    "value": "All",
+                                },
                                 {
                                     "label": " Mengapa aplikasi DITOLAK",
                                     "value": "Denied",
@@ -3582,9 +3998,13 @@ def render(tab):
                         html.P(
                             f"Empat detektor (IQR, Z-score, Isolation Forest, LOF) ditambah DBSCAN-noise saling "
                             f"memberi suara pada tiap aplikasi; {n_hc:,} adalah anomali keyakinan tinggi (3+ metode "
-                            f'sepakat). 15 yang paling ekstrem ditriase manual menjadi verdict beserta bukti, bukan '
+                            f"sepakat). 15 yang paling ekstrem ditriase manual menjadi verdict beserta bukti, bukan "
                             f'sekadar ditandai "aneh".',
-                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                            style={
+                                "fontSize": "12px",
+                                "color": INK,
+                                "margin": "0 0 12px",
+                            },
                         ),
                         why(WHY_DETECTORS),
                     ],
@@ -3789,7 +4209,7 @@ def render(tab):
                                         ),
                                         html.Div(
                                             (
-                                                f">= $1M - {coll_pct:.0f}% berakhiran \"...5,000\""
+                                                f'>= $1M - {coll_pct:.0f}% berakhiran "...5,000"'
                                                 if coll_pct is not None
                                                 else "dari loan >= $1M berbagi satu ciri"
                                             ),
@@ -3879,7 +4299,9 @@ def render(tab):
 
     if tab == "whatif":
         controls = [
-            render_control(field, label, kind, order, default, "wi")
+            render_control(
+                field, label, kind, order, default, "wi", wrap_id=FIN_WRAP.get(field)
+            )
             for field, label, kind, order, default in WHATIF_FIELDS
         ] + [
             render_control(field, label, kind, order, default, "ctx")
@@ -3887,6 +4309,27 @@ def render(tab):
         ]
         return html.Div(
             [
+                panel(
+                    "Basis finansial",
+                    [
+                        dcc.RadioItems(
+                            id="wi-fin-mode",
+                            value="dti",
+                            options=[
+                                {"label": " Pakai DTI", "value": "dti"},
+                                {
+                                    "label": " Pakai band income + besar loan",
+                                    "value": "income_loan",
+                                },
+                            ],
+                            inline=True,
+                            style={"fontSize": "12px"},
+                        )
+                    ],
+                    sub="DTI, income, dan besar loan saling berkaitan, jadi memilih ketiganya "
+                    "sekaligus menyusutkan sampel sampai angkanya tidak bisa dipercaya. Pilih "
+                    "salah satu basis saja; yang tidak dipakai disembunyikan dan tidak ikut memfilter.",
+                ),
                 panel(
                     "Bangun profil pemohon",
                     [
@@ -4171,6 +4614,27 @@ def _cb_rules_all_table(outcome, min_lift):
 
 # ============================================================ what-if callback
 @app.callback(
+    [
+        Output("wrap-dti", "style"),
+        Output("wrap-income", "style"),
+        Output("wrap-loan", "style"),
+        Output("wi-debt_to_income_ratio", "value"),
+        Output("wi-income_band", "value"),
+        Output("wi-loan_amount_band", "value"),
+    ],
+    Input("wi-fin-mode", "value"),
+)
+def _cb_fin_mode(mode):
+    """Show one financial basis at a time and clear the hidden side so a stale
+    selection cannot keep filtering invisibly."""
+    shown = dict(CONTROL_WRAP_STYLE)
+    hidden = {"display": "none"}
+    if mode == "income_loan":
+        return hidden, shown, shown, "", no_update, no_update
+    return shown, hidden, hidden, no_update, "", ""
+
+
+@app.callback(
     Output("whatif-result", "children"),
     [Input(f"wi-{field}", "value") for field, _, _, _, _ in WHATIF_FIELDS]
     + [Input(f"ctx-{field}", "value") for field, _, _, _, _ in CONTEXT_FIELDS],
@@ -4194,9 +4658,7 @@ def _cb_whatif(*values):
         )
     else:
         detail = "; ".join(f"{label}={vlabel(value)}" for label, value in active)
-        note = (
-            f"{n:,} aplikasi historis cocok dengan semua {len(active)} atribut terpilih. {detail}."
-        )
+        note = f"{n:,} aplikasi historis cocok dengan semua {len(active)} atribut terpilih. {detail}."
         if n < 30:
             note += f" Hati-hati, cuma {n:,} aplikasi yang cocok, jadi angkanya belum stabil."
     outcome_label = "Tingkat persetujuan historis gabungan"
