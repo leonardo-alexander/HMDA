@@ -3832,8 +3832,8 @@ def render(tab):
         sections = [
             ("f5-geo", "Geografi", render("geography")),
             ("f5-whatif", "What-If", render("whatif")),
-            ("f5-fair", "Keadilan", render("fairness")),
-            ("f5-load", "Uji beban", _load_test_panel()),
+            ("f5-fair", "Fairness", render("fairness")),
+            ("f5-load", "Load Test", _load_test_panel()),
         ]
         nav = html.Div(
             [
