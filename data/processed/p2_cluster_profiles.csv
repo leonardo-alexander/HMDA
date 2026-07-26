@@ -1,8 +1,8 @@
 kmeans_cluster,n,approval_rate,med_income,med_loan,med_cltv,pct_investment,pct_refinance,pct_high_dti,pct_manufactured,med_tract_minority,share_of_data,segment_name
-0,36796,91.5,95.0,295000.0,78.353,0.0,0.0,0.0,0.0,29.54,36.8,Mainstream prime purchasers
-1,4504,87.4,462.0,645000.0,78.353,5.3,21.2,1.0,0.1,24.83,4.5,Jumbo / high-net-worth buyers
-2,7038,82.9,95.0,215000.0,78.353,100.0,37.8,4.4,0.0,40.665,7.0,Property investors
-3,25547,79.7,89.0,215000.0,78.353,0.0,94.5,0.0,0.0,30.33,25.5,Refinancers (rate & cash-out)
-4,4529,43.1,61.0,115000.0,78.353,2.1,12.9,18.1,100.0,21.8,4.5,Manufactured-housing applicants
-5,12850,75.1,115.0,65000.0,78.353,0.0,15.6,0.0,0.0,26.64,12.9,Small-loan borrowers
-6,8731,39.5,70.0,205000.0,79.892,0.1,29.6,100.0,0.0,33.89,8.7,DTI-stressed borrowers
+0,25565,79.7,89.0,215000.0,78.353,0.0,94.5,0.0,0.0,30.33,25.6,Refinancers (rate & cash-out)
+1,7036,83.0,95.0,215000.0,78.353,100.0,37.7,4.4,0.0,40.644999999999996,7.0,Property investors
+2,36833,91.5,95.0,295000.0,78.353,0.0,0.0,0.0,0.0,29.54,36.8,Mainstream prime purchasers
+3,4529,43.1,61.0,115000.0,78.353,2.1,12.9,18.1,100.0,21.8,4.5,Manufactured-housing applicants
+4,8732,39.4,70.0,205000.0,79.89150000000001,0.1,29.6,100.0,0.0,33.89,8.7,DTI-stressed borrowers
+5,4447,87.4,467.0,645000.0,78.353,5.4,21.1,1.0,0.1,24.85,4.4,Jumbo / high-net-worth buyers
+6,12853,75.1,115.0,65000.0,78.353,0.0,15.6,0.0,0.0,26.64,12.9,Small-loan borrowers
