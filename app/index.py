@@ -2935,8 +2935,10 @@ WHY_SCALING = [
     (
         "Kenapa winsorize cuma untuk clustering?",
         "Karena Fase 4 justru mencari nilai ekstrem. Kalau ekornya sudah dipotong duluan, deteksi "
-        "anomali kehilangan target utamanya. Jadi winsorize cuma dipakai di salinan untuk "
-        "clustering, sementara nilai asli tetap utuh untuk profiling, rules, dan anomali.",
+        "anomali kehilangan target utamanya. Winsorize cuma dipakai di salinan untuk clustering, "
+        "sementara profiling, association rules, dan matriks anomali memakai nilai asli. Ada satu "
+        "pengecualian yang perlu diketahui: detektor DBSCAN-noise mewarisi matriks clustering, "
+        "jadi ikut terkena winsorize. Rinciannya ada di tabel penskalaan pada Fase 4.",
     ),
     (
         "Kenapa clustering pakai StandardScaler tapi anomali pakai RobustScaler?",
@@ -3719,6 +3721,70 @@ def _key_takeaways_panel():
                 "praktik umum industri.",
             ),
         ]
+    )
+
+
+WHY_SCALER_MAP = [
+    ("Kenapa IQR dan Z-score tidak diskalakan sama sekali?",
+     "Karena keduanya sudah tidak bergantung pada skala. IQR bekerja pada kuartil per fitur, "
+     "dan Z-score memang membagi dengan standar deviasi fitur itu sendiri. Menskalakan lebih "
+     "dulu tidak mengubah baris mana yang ditandai, jadi cuma menambah langkah tanpa manfaat."),
+    ("Kenapa Isolation Forest dan LOF pakai RobustScaler?",
+     "Karena keduanya menghitung jarak atau partisi antar fitur, jadi skalanya harus setara. "
+     "Bedanya dengan clustering, di sini penskalaannya tidak boleh terseret outlier yang justru "
+     "sedang dicari. Mean dan standar deviasi tertarik nilai ekstrem sehingga outlier "
+     "menggelembungkan std dan skornya sendiri malah mengecil; median dan IQR tidak begitu."),
+    ("Kenapa DBSCAN-noise memakai matriks clustering, bukan matriks anomali?",
+     "Karena titik noise itu produk sampingan DBSCAN di Fase 2, dan DBSCAN dijalankan untuk "
+     "membentuk cluster. Konsekuensinya detektor kelima ini satu-satunya yang bekerja pada data "
+     "yang sudah di-winsorize, jadi paling tidak sensitif terhadap ekor distribusi. Itu bisa "
+     "diterima karena perannya melengkapi LOF pada sisi kontekstual, bukan menangkap magnitudo "
+     "ekstrem yang memang sudah ditangani tiga detektor global."),
+    ("Kenapa profil grup kolektif juga pakai RobustScaler?",
+     "Karena unit yang dibandingkan adalah median dan IQR antar kelompok, dan sebagian kelompok "
+     "berukuran kecil sehingga ringkasannya mudah bergeser. RobustScaler menjaga kelompok "
+     "ekstrem tetap menonjol alih-alih menekan skala seluruh kelompok lain."),
+]
+
+
+def _scaler_map_panel():
+    """Which matrix and scaler each detector actually consumes."""
+    df = pd.DataFrame([
+        {"Metode": "IQR", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
+        {"Metode": "Z-score", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
+        {"Metode": "Isolation Forest", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
+        {"Metode": "Local Outlier Factor", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
+        {"Metode": "DBSCAN-noise", "Data": "matriks clustering (9 fitur)", "Penskalaan": "winsorize + StandardScaler"},
+        {"Metode": "Isolation Forest tingkat grup", "Data": "profil median & IQR per grup", "Penskalaan": "RobustScaler"},
+    ])
+    return panel(
+        "Matriks dan penskalaan tiap detektor",
+        [
+            html.P(
+                "Kelima detektor tidak memakai data yang sama. Tabel ini menunjukkan persisnya, "
+                "termasuk satu ketidakseragaman yang perlu diketahui.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+            ),
+            _table(df),
+            html.Div(
+                [
+                    html.B("Catatan kejujuran. ", style={"fontSize": "12px", "color": NAVY}),
+                    html.Span(
+                        "DBSCAN-noise mewarisi matriks clustering, sehingga satu-satunya detektor "
+                        "yang bekerja pada data yang sudah di-winsorize. Artinya klaim bahwa "
+                        "deteksi anomali selalu memakai nilai asli tidak berlaku untuk detektor "
+                        "kelima ini. Perannya memang melengkapi LOF di sisi kontekstual, bukan "
+                        "menangkap magnitudo ekstrem.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
+                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+            ),
+            why(WHY_SCALER_MAP),
+        ],
+        sub="RobustScaler dipakai untuk Isolation Forest, LOF, dan profil grup kolektif. "
+        "StandardScaler khusus untuk keempat metode clustering.",
     )
 
 
@@ -5064,6 +5130,7 @@ def render(tab):
                     ],
                     style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
                 ),
+                _scaler_map_panel(),
                 _collective_groups_panel(),
                 panel(
                     "Rekaman paling ekstrem: ditriase dengan bukti",
