@@ -91,7 +91,14 @@ def knee_point(x, y):
     yn = (y - y.min()) / (y.max() - y.min()) if y.max() > y.min() else np.zeros_like(y)
     p1, p2 = np.array([xn[0], yn[0]]), np.array([xn[-1], yn[-1]])
     pts = np.c_[xn, yn]
-    distances = np.abs(np.cross(p2 - p1, pts - p1)) / np.linalg.norm(p2 - p1)
+    # 2-D cross-product magnitude (perpendicular distance to the chord). Written out
+    # explicitly because np.cross no longer accepts 2-D vectors in NumPy 2.0+.
+    d = p2 - p1
+    v = pts - p1
+    denom = np.linalg.norm(d)
+    if denom == 0:
+        return int(x[0])
+    distances = np.abs(d[0] * v[:, 1] - d[1] * v[:, 0]) / denom
     return int(x[np.argmax(distances)])
 
 

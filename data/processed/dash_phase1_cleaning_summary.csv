@@ -1,0 +1,2 @@
+raw_rows,clean_rows,duplicates_removed,fields_dropped,fields_dropped_list,residual_missing_cells
+100000,99995,5,6,total_points_and_fees; discount_points; lender_credits; prepayment_penalty_term; intro_rate_period; multifamily_affordable_units,0

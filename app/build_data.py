@@ -77,6 +77,8 @@ def run_phase1():
 
     p1.export_phase1(df, approve_deny, df_denials, comb, DATA_INTERIM, TABLE_DIR)
     feature_selection_audit.to_csv(TABLE_DIR / "p1_feature_selection_audit.csv", index=False)
+    p5.export_phase1_aggregates(miss, high_missing, feature_selection_audit,
+                                n_before, n_dupes, residual, DATA_PROCESSED)
 
     print(f"Phase 1: clean={df.shape}  approve_deny={approve_deny.shape}  denials={df_denials.shape}")
     return df, approve_deny, df_denials

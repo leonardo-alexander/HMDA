@@ -1,0 +1,15 @@
+criterion,status,evidence
+5.1 Data Cleaning,PASS,0 missing cells after handling; duplicate check recorded (5 removed).
+5.1 Data Transformation,PASS,Domain binning plus phase-appropriate StandardScaler/RobustScaler matrices.
+5.1 Feature Selection,PASS,"Correlation, redundancy screening, and entropy-based Mutual Information documented."
+5.2 Algorithm Application,PASS,"K-Means, DBSCAN, and Ward hierarchical clustering executed."
+5.2 Optimal K Selection,PASS,Elbow=6; silhouette optimum=7; selected K=7.
+5.2 Cluster Profiling,PASS,"7 named segments with size, medians, approval, and business interpretation."
+5.3 Discretization,PASS,"Continuous variables converted into populated, interpretable domain bands."
+5.3 Rule Generation,PASS,"11 non-trivial pruned rules with Support, Confidence, and Lift."
+5.3 Rule Interpretation,PASS,11 rules selected for explicit business interpretation.
+5.4 Detection Methods,PASS,"IQR, Z-score, Isolation Forest, LOF, and DBSCAN noise compared systematically."
+5.4 Cross-referencing,PASS,739 rows supported by at least three detectors.
+5.4 Business Interpretation,PASS,Top anomalies classified with record-level supporting evidence.
+5.5 Dashboard Quality,PASS,Standalone interactive dashboard with five plain-language views.
+5.5 Knowledge Report,PASS,Central question answered in plain business language with interpretation boundaries.

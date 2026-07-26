@@ -43,6 +43,51 @@ def export_dashboard_aggregates(clean, appdeny, denials, out_dir, random_state=c
     clean[["kmeans_cluster", "anomaly_votes", "iso_score"]].to_csv(out_dir / "dash_points.csv", index=True)
 
 
+def export_phase1_aggregates(miss, high_missing, feature_selection_audit,
+                             n_before, n_dupes, residual_missing, out_dir):
+    """Writes the Phase 1 (preprocessing) aggregates the dashboard's Fase 1 tab reads:
+    dash_phase1_missingness.csv, dash_phase1_feature_importance.csv, and
+    dash_phase1_cleaning_summary.csv. `fate` is exported as a language-neutral code
+    (dropped / median_imputed / filled_unknown); the dashboard maps it to Indonesian."""
+    out_dir = Path(out_dir)
+    cont = set(cfg.CONTINUOUS)
+    high = set(high_missing)
+
+    mrows = []
+    for field, frac in miss.items():
+        if frac is None or float(frac) <= 0:
+            continue
+        if field in high:
+            fate = "dropped"
+        elif field in cont:
+            fate = "median_imputed"
+        else:
+            fate = "filled_unknown"
+        mrows.append({"field": field, "missing_pct": round(float(frac) * 100, 1), "fate": fate})
+    miss_df = pd.DataFrame(mrows).sort_values("missing_pct", ascending=False)
+    miss_df.to_csv(out_dir / "dash_phase1_missingness.csv", index=False)
+
+    fi = feature_selection_audit.copy()
+    if "role" in fi.columns:
+        fi = fi[fi["role"] != "Process diagnostic only"]
+    keep = [c for c in ["feature", "corr", "mi", "score", "role"] if c in fi.columns]
+    fi = fi[keep].sort_values("score", ascending=False).head(20)
+    fi.to_csv(out_dir / "dash_phase1_feature_importance.csv", index=False)
+
+    clean_rows = int(n_before - n_dupes)
+    summary = pd.DataFrame([{
+        "raw_rows": int(n_before),
+        "clean_rows": clean_rows,
+        "duplicates_removed": int(n_dupes),
+        "fields_dropped": len(high_missing),
+        "fields_dropped_list": "; ".join(map(str, high_missing)),
+        "residual_missing_cells": int(residual_missing),
+    }])
+    summary.to_csv(out_dir / "dash_phase1_cleaning_summary.csv", index=False)
+    print(f"Phase 1 dashboard aggregates: {len(miss_df)} missing fields, "
+          f"{len(fi)} ranked features, {clean_rows:,} clean rows")
+
+
 def build_standalone_dashboard(clean, appdeny, profile, final_rules, top_anom, fair_pivot, out_path,
                                random_state=cfg.RANDOM_STATE):
     """Builds the zero-setup standalone HTML dashboard (Overview/Segments/

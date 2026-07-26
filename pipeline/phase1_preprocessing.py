@@ -13,8 +13,16 @@ from sklearn.feature_selection import mutual_info_classif
 from . import config as cfg
 
 
-def load_raw(url=cfg.HF_URL):
-    df = pd.read_csv(url, dtype=str, keep_default_na=True)
+def load_raw(url=cfg.HF_URL, local_fallback=cfg.LOCAL_RAW):
+    try:
+        df = pd.read_csv(url, dtype=str, keep_default_na=True)
+    except Exception as exc:
+        if local_fallback and Path(local_fallback).exists():
+            print(f"[load_raw] remote fetch failed ({exc}); "
+                  f"falling back to local copy {local_fallback}")
+            df = pd.read_csv(local_fallback, dtype=str, keep_default_na=True)
+        else:
+            raise
     df.columns = df.columns.str.replace("-", "_", regex=False)
     df = df.replace({"": np.nan, " ": np.nan, "NA": np.nan, "na": np.nan, "NaN": np.nan,
                      "nan": np.nan, "None": np.nan, "null": np.nan})

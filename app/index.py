@@ -93,10 +93,18 @@ pio.templates["hmda"] = go.layout.Template(
 TEMPLATE = "hmda"
 
 # Resolve CSVs relative to this script rather than the process working directory.
-# Override with HMDA_DATA_DIR=/path/to/exports when the dashboard and data are stored
-# separately (for example, a deployment container or a Colab-mounted Drive folder).
+# The pipeline (build_data.py / the notebook) writes exports to <project>/data/processed,
+# so default there; fall back to the script directory for bundled deployments where the
+# CSVs sit next to index.py. Override with HMDA_DATA_DIR=/path/to/exports when the
+# dashboard and data are stored separately (deployment container, Colab-mounted Drive).
+def _default_data_dir() -> Path:
+    here = Path(__file__).resolve().parent
+    processed = here.parent / "data" / "processed"
+    return processed if processed.exists() else here
+
+
 DATA_DIR = (
-    Path(os.getenv("HMDA_DATA_DIR", Path(__file__).resolve().parent))
+    Path(os.getenv("HMDA_DATA_DIR", _default_data_dir()))
     .expanduser()
     .resolve()
 )
@@ -128,6 +136,12 @@ def read(path: str | Path, *, required: bool = False, **kw: Any) -> pd.DataFrame
     resolved = Path(path)
     if not resolved.is_absolute():
         resolved = DATA_DIR / resolved
+        # Interim exports (e.g. hmda_approve_deny.csv) live in data/interim, a sibling
+        # of the processed-export DATA_DIR; fall back there when not found in DATA_DIR.
+        if not resolved.exists():
+            interim = DATA_DIR.parent / "interim" / Path(path).name
+            if interim.exists():
+                resolved = interim
     key = resolved.name
     try:
         frame = pd.read_csv(resolved, **kw)
@@ -175,65 +189,65 @@ TOTAL_DECISIONED = int(
 )  # fallback when support is absent
 
 ITEM_LABELS = {
-    "debt_to_income_ratio=>60%": "debt-to-income ratio is above 60%",
-    "debt_to_income_ratio=50%-60%": "debt-to-income ratio is 50-60%",
-    "debt_to_income_ratio=30%-<36%": "debt-to-income ratio is 30-36%",
-    "lien_status=Subordinate_Lien": "the loan is a subordinate (second) lien",
-    "loan_type=Conventional": "financed through a conventional loan",
-    "construction_method=Manufactured": "the property is manufactured housing",
-    "loan_purpose=Home_Purchase": "the purpose is a home purchase",
-    "income_band=<30k": "applicant income is under $30k",
-    "preapproval=Requested": "the applicant requested preapproval",
-    "loan_amount_band=300-500k": "the loan amount is $300k-500k",
+    "debt_to_income_ratio=>60%": "debt-to-income ratio di atas 60%",
+    "debt_to_income_ratio=50%-60%": "debt-to-income ratio 50-60%",
+    "debt_to_income_ratio=30%-<36%": "debt-to-income ratio 30-36%",
+    "lien_status=Subordinate_Lien": "loan adalah subordinate (second) lien",
+    "loan_type=Conventional": "dibiayai lewat conventional loan",
+    "construction_method=Manufactured": "properti adalah manufactured housing",
+    "loan_purpose=Home_Purchase": "tujuannya pembelian rumah",
+    "income_band=<30k": "income pemohon di bawah $30k",
+    "preapproval=Requested": "pemohon meminta preapproval",
+    "loan_amount_band=300-500k": "loan amount $300k-500k",
 }
 
 RECS = {
     frozenset(
         ["debt_to_income_ratio=>60%", "lien_status=Subordinate_Lien"]
-    ): "Intercept before full underwriting; route to a debt-consolidation alternative instead of a second lien.",
+    ): "Cegat sebelum underwriting penuh; arahkan ke alternatif debt-consolidation alih-alih second lien.",
     frozenset(
         ["debt_to_income_ratio=>60%"]
-    ): "Flag at intake: lowering DTI below 60% (co-borrower, longer term, smaller loan) is the single highest-leverage fix available.",
+    ): "Tandai di intake: menurunkan DTI di bawah 60% (co-borrower, tenor lebih panjang, loan lebih kecil) adalah perbaikan dengan leverage tertinggi.",
     frozenset(
         ["construction_method=Manufactured", "loan_type=Conventional"]
-    ): "Steer manufactured-home buyers to FHA/VA or a chattel-specific program instead of the conventional channel.",
+    ): "Arahkan pembeli manufactured-home ke FHA/VA atau program khusus chattel alih-alih jalur conventional.",
     frozenset(
         ["debt_to_income_ratio=50%-60%", "loan_type=Conventional"]
-    ): "Route DTI 50-60% applicants to FHA/VA underwriting, which tolerates this band far better than conventional.",
+    ): "Arahkan pemohon DTI 50-60% ke underwriting FHA/VA, yang jauh lebih toleran pada band ini dibanding conventional.",
     frozenset(
         ["construction_method=Manufactured", "loan_purpose=Home_Purchase"]
-    ): "For manufactured-home purchases, verify land ownership/permanent foundation - titling as real property unlocks standard mortgage programs.",
+    ): "Untuk pembelian manufactured-home, verifikasi kepemilikan tanah/fondasi permanen - status sebagai real property membuka program mortgage standar.",
     frozenset(
         ["income_band=<30k", "loan_type=Conventional"]
-    ): "Pair sub-$30k-income applicants with down-payment assistance before a conventional application.",
+    ): "Pasangkan pemohon berincome di bawah $30k dengan bantuan down-payment sebelum aplikasi conventional.",
     frozenset(
         ["income_band=<30k"]
-    ): "Route to manual-underwrite / assistance programs - every other income band approves at majority rates.",
+    ): "Arahkan ke manual-underwrite / program bantuan - semua band income lain disetujui pada tingkat mayoritas.",
     frozenset(
         ["construction_method=Manufactured"]
-    ): "Treat manufactured housing as a distinct underwriting track; the penalty is structural, not explained by income or location.",
+    ): "Perlakukan manufactured housing sebagai jalur underwriting tersendiri; penaltinya struktural, tidak dijelaskan oleh income atau lokasi.",
     frozenset(
         ["preapproval=Requested"]
-    ): "Promote the preapproval track - it moves rejection to the cheap early stage; files that reach final decision essentially never fail.",
+    ): "Dorong jalur preapproval - memindahkan penolakan ke tahap awal yang murah; berkas yang sampai keputusan akhir nyaris tidak pernah gagal.",
     frozenset(
         ["debt_to_income_ratio=30%-<36%", "loan_purpose=Home_Purchase"]
-    ): "Fast-track these applications - textbook affordability profile with the collateral validated by an arm's-length sale price.",
+    ): "Fast-track aplikasi ini - profil keterjangkauan ideal dengan collateral tervalidasi oleh harga jual arm's-length.",
     frozenset(
         ["debt_to_income_ratio=30%-<36%", "loan_amount_band=300-500k"]
-    ): "Fast-track - the conforming-loan sweet spot: large enough to clear fixed costs, small enough to stay inside GSE limits.",
+    ): "Fast-track - sweet spot conforming-loan: cukup besar menutup biaya tetap, cukup kecil tetap dalam batas GSE.",
 }
 
 OUTLIER_TYPE = {
-    "DATA ERROR": "Impossible value (data-entry/processing error)",
-    "RARE BUT VALID": "Genuine extreme record (jumbo loan, multi-unit, or high-value investment property)",
-    "RISK SIGNAL": "Unusual but plausible risk combination (e.g. high leverage + low income)",
-    "MANUAL REVIEW": "Extreme magnitude, reviewed by hand",
+    "DATA ERROR": "Nilai mustahil (kesalahan input/proses data)",
+    "RARE BUT VALID": "Rekaman ekstrem yang sah (jumbo loan, multi-unit, atau properti investasi bernilai tinggi)",
+    "RISK SIGNAL": "Kombinasi risiko tidak biasa tapi masuk akal (mis. leverage tinggi + income rendah)",
+    "MANUAL REVIEW": "Magnitudo ekstrem, diperiksa manual",
 }
 
 
 def _rule_phrase(antecedent):
     items = str(antecedent).split(", ")
-    return " and ".join(
+    return " dan ".join(
         ITEM_LABELS.get(it, it.replace("_", " ").replace("=", ": ")) for it in items
     )
 
@@ -242,13 +256,13 @@ def _rule_recommendation(antecedent, then, confidence, n):
     key = frozenset(str(antecedent).split(", "))
     if key in RECS:
         return RECS[key]
-    verb = "denied" if then == "Denied" else "originated"
+    verb = "ditolak" if then == "Denied" else "disetujui"
     tail = (
-        "flag for review or an alternative program before full underwriting"
+        "tandai untuk review atau program alternatif sebelum underwriting penuh"
         if then == "Denied"
-        else "a strong candidate for fast-tracking"
+        else "kandidat kuat untuk fast-track"
     )
-    return f"Applications matching this profile are {verb} {confidence*100:.0f}% of the time ({n:,} similar cases); {tail}."
+    return f"Aplikasi yang cocok dengan profil ini {verb} {confidence*100:.0f}% dari waktu ({n:,} kasus serupa); {tail}."
 
 
 def _normalize_rules(df):
@@ -454,6 +468,10 @@ if rules_all is not None and rules is not None:
     ]
 elif rules_all is not None:
     rules_all["kept"] = "No"
+# Fase 1 (preprocessing) aggregates - written by the notebook / build_data.py.
+phase1_missing = read("dash_phase1_missingness.csv")      # field, missing_pct, fate
+phase1_features = read("dash_phase1_feature_importance.csv")  # feature, corr, mi, score, role
+phase1_summary = read("dash_phase1_cleaning_summary.csv")  # raw_rows, clean_rows, duplicates_removed, ...
 state_summary = read(
     "dash_state_summary.csv"
 )  # state_code, n, approval_rate, median_income, median_loan, ...
@@ -504,20 +522,20 @@ def clabel(cid):
 # Business-framed one-line description per segment archetype (keyed off the notebook's
 # own auto-generated segment_name, so it tracks whatever names this run produced).
 SEGMENT_BLURB = {
-    "Refinancers (rate & cash-out)": "Existing homeowners refinancing for rate or pulling cash out. Already proven mortgage payers, "
-    "so approval tracks close to the portfolio norm: the underwriting question is equity, not creditworthiness.",
-    "Property investors": "100% investment-occupancy applications. Approval is solid but slightly below prime purchasers, since "
-    "lenders price in that investment properties are the first payment skipped in a downturn.",
-    "Mainstream prime purchasers": "The largest segment and the approval benchmark for the whole portfolio. Near-zero risk flags: "
-    'this is what a "clean" application looks like.',
-    "Manufactured-housing applicants": "Defined by property type, not income or leverage. Approval collapses to well under half. "
-    "See the Rules tab: this penalty is structural (financing channel + transaction type), not explained by income.",
-    "DTI-stressed borrowers": "Every application here carries debt-to-income above 50%. The lowest approval rate in the portfolio, "
-    "driven almost entirely by one number: see the DTI>60% rule on the Rules tab.",
-    "Jumbo / high-net-worth buyers": "Median income roughly 5x the portfolio median. Approval is strong despite large loan sizes: "
-    "capacity to repay is not in question for this group.",
-    "Small-loan borrowers": "The smallest median loan size in the portfolio (home-improvement-scale). Approval sits close to "
-    "the norm: small dollar amounts carry proportionally small risk.",
+    "Refinancers (rate & cash-out)": "Pemilik rumah yang melakukan refinance untuk bunga atau menarik cash-out. Sudah terbukti membayar "
+    "mortgage, sehingga tingkat persetujuan mendekati norma portfolio: pertanyaan underwriting-nya adalah equity, bukan kelayakan kredit.",
+    "Property investors": "100% aplikasi dengan investment-occupancy. Persetujuan cukup kuat tetapi sedikit di bawah prime purchasers, karena "
+    "lender memperhitungkan bahwa properti investasi adalah pembayaran pertama yang dilewati saat resesi.",
+    "Mainstream prime purchasers": "Segmen terbesar dan tolok ukur persetujuan untuk seluruh portfolio. Nyaris tanpa risk flag: "
+    'inilah wujud aplikasi yang "bersih".',
+    "Manufactured-housing applicants": "Ditentukan oleh tipe properti, bukan income atau leverage. Persetujuan anjlok hingga jauh di bawah "
+    "setengah. Lihat tab Aturan: penalti ini bersifat struktural (jalur pembiayaan + jenis transaksi), tidak dijelaskan oleh income.",
+    "DTI-stressed borrowers": "Setiap aplikasi di sini memiliki debt-to-income di atas 50%. Tingkat persetujuan terendah dalam portfolio, "
+    "hampir seluruhnya didorong oleh satu angka: lihat aturan DTI>60% pada tab Aturan.",
+    "Jumbo / high-net-worth buyers": "Median income sekitar 5x median portfolio. Persetujuan kuat meski ukuran loan besar: "
+    "kemampuan membayar tidak dipertanyakan untuk kelompok ini.",
+    "Small-loan borrowers": "Ukuran median loan terkecil dalam portfolio (skala home-improvement). Persetujuan mendekati "
+    "norma: nominal kecil membawa risiko yang proporsional kecil.",
 }
 
 
@@ -529,27 +547,27 @@ def segment_blurb(row):
 
 
 # How to approach or handle each segment: one concrete, actionable recommendation per
-# cluster, in the same spirit as the "Business recommendation" column on the Rules tab.
+# cluster, in the same spirit as the "Rekomendasi bisnis" column on the Rules tab.
 CLUSTER_RECS = {
-    "Refinancers (rate & cash-out)": "Give this segment a dedicated refinance underwriting track (rate-and-term vs. cash-out) instead of "
-    "routing it through purchase underwriting. Approval already tracks the portfolio norm, so the lever "
-    "here is retention and cross-sell (home-equity products), with extra scrutiny on cash-out equity extraction.",
-    "Property investors": "Offer a DSCR or portfolio-lender program built for landlords instead of standard owner-occupied "
-    "underwriting. Approval is already solid, so the main risk to manage is concentration if this book grows fast.",
-    "Mainstream prime purchasers": "Protect this segment's speed above all else: it is the largest, lowest-friction, highest-approval "
-    "population and the natural baseline for testing any new underwriting rule before rolling it out elsewhere.",
-    "Manufactured-housing applicants": "Build or partner into a chattel-lending or FHA Title I product for manufactured homes rather than "
-    "forcing this segment through conventional underwriting, where the penalty is structural, not risk-based "
-    "(see Rules tab). Track fair-lending exposure, since property type here correlates with income and geography.",
-    "DTI-stressed borrowers": "Screen debt-to-income at intake, before full underwriting, and redirect near-certain denials to a "
-    'debt-consolidation or credit-counseling referral. A "declined but here is a path" offer (secured card, '
-    "budgeting tool) keeps the relationship alive for a stronger future application.",
-    "Jumbo / high-net-worth buyers": "Treat as a relationship-banking segment: approval is already strong, so the opportunity is service and "
-    "cross-sell (private banking, portfolio lending) rather than underwriting changes. Watch investor appetite, "
-    "since jumbo loans are harder to sell to the GSEs than conforming ones.",
-    "Small-loan borrowers": "Build a streamlined, lower-cost underwriting track (e.g. AVM instead of full appraisal) for small-dollar "
-    "loans; approval is already near the portfolio average, so the real constraint is origination cost relative "
-    "to loan size, not credit risk.",
+    "Refinancers (rate & cash-out)": "Beri segmen ini jalur underwriting refinance khusus (rate-and-term vs. cash-out), bukan "
+    "dialihkan lewat underwriting pembelian. Persetujuan sudah mengikuti norma portfolio, jadi tuas di sini "
+    "adalah retensi dan cross-sell (produk home-equity), dengan perhatian ekstra pada penarikan equity cash-out.",
+    "Property investors": "Tawarkan program DSCR atau portfolio-lender yang dirancang untuk landlord, bukan underwriting standar "
+    "owner-occupied. Persetujuan sudah kuat, jadi risiko utama yang perlu dikelola adalah konsentrasi bila buku ini tumbuh cepat.",
+    "Mainstream prime purchasers": "Jaga kecepatan segmen ini di atas segalanya: ini populasi terbesar, paling minim friksi, dan tertinggi "
+    "persetujuannya, sekaligus baseline alami untuk menguji setiap aturan underwriting baru sebelum diterapkan ke segmen lain.",
+    "Manufactured-housing applicants": "Bangun atau bermitra pada produk chattel-lending atau FHA Title I untuk manufactured home, alih-alih "
+    "memaksa segmen ini melalui underwriting konvensional, di mana penaltinya struktural, bukan berbasis risiko "
+    "(lihat tab Aturan). Pantau eksposur fair-lending, karena tipe properti di sini berkorelasi dengan income dan geografi.",
+    "DTI-stressed borrowers": "Saring debt-to-income di tahap intake, sebelum underwriting penuh, dan arahkan penolakan yang hampir pasti ke "
+    'rujukan debt-consolidation atau credit-counseling. Tawaran "ditolak tetapi ini jalannya" (secured card, '
+    "alat budgeting) menjaga hubungan tetap hidup untuk aplikasi masa depan yang lebih kuat.",
+    "Jumbo / high-net-worth buyers": "Perlakukan sebagai segmen relationship-banking: persetujuan sudah kuat, jadi peluangnya ada di layanan dan "
+    "cross-sell (private banking, portfolio lending), bukan perubahan underwriting. Perhatikan selera investor, "
+    "karena jumbo loan lebih sulit dijual ke GSE dibanding yang conforming.",
+    "Small-loan borrowers": "Bangun jalur underwriting yang ramping dan berbiaya lebih rendah (mis. AVM alih-alih appraisal penuh) untuk "
+    "loan bernominal kecil; persetujuan sudah mendekati rata-rata portfolio, jadi kendala sebenarnya adalah biaya origination "
+    "relatif terhadap ukuran loan, bukan risiko kredit.",
 }
 
 
@@ -590,13 +608,13 @@ def kpis():
     else:
         n_anom = 0
     return [
-        ("Applications analysed", f"{n_apps:,}", STEEL),
-        ("Approval rate", f"{appr:.1f}%" if appr == appr else "N/A", GREEN),
-        ("Denial rate", f"{100-appr:.1f}%" if appr == appr else "N/A", RED),
-        ("Segments found", f"{n_clusters}", TEAL),
-        ("Business-relevant rules", f"{n_rules}", NAVY),
-        ("Top rule lift", f"{max_lift:.1f}x" if max_lift == max_lift else "N/A", AMBER),
-        ("High-conf. anomalies", f"{n_anom:,}", "#7d3c98"),
+        ("Aplikasi dianalisis", f"{n_apps:,}", STEEL),
+        ("Tingkat persetujuan", f"{appr:.1f}%" if appr == appr else "N/A", GREEN),
+        ("Tingkat penolakan", f"{100-appr:.1f}%" if appr == appr else "N/A", RED),
+        ("Segmen ditemukan", f"{n_clusters}", TEAL),
+        ("Aturan relevan bisnis", f"{n_rules}", NAVY),
+        ("Lift aturan tertinggi", f"{max_lift:.1f}x" if max_lift == max_lift else "N/A", AMBER),
+        ("Anomali keyakinan tinggi", f"{n_anom:,}", "#7d3c98"),
     ]
 
 
@@ -616,7 +634,7 @@ def fig_approval_by_cluster():
         color="approval_rate",
         color_continuous_scale=["#c0392b", "#e0a82e", "#2e8b57"],
         text=d["approval_rate"].map(lambda v: f"{v:.0f}%"),
-        labels={"approval_rate": "Approval rate (%)", "name": ""},
+        labels={"approval_rate": "Tingkat persetujuan (%)", "name": ""},
     )
     f.update_traces(textposition="outside", cliponaxis=False)
     f.update_layout(
@@ -624,7 +642,7 @@ def fig_approval_by_cluster():
         height=380,
         coloraxis_showscale=False,
         margin=dict(l=10, r=60, t=30, b=10),
-        title="Approval rate differs sharply by segment",
+        title="Tingkat persetujuan berbeda tajam antar segmen",
     )
     f.update_xaxes(range=[0, 112])
     f.update_yaxes(automargin=True, tickfont=dict(size=11.5))
@@ -642,7 +660,7 @@ def fig_cluster_sizes():
     f.update_layout(
         template=TEMPLATE,
         height=380,
-        title="Share of applications by segment",
+        title="Porsi aplikasi per segmen",
         margin=dict(l=10, r=10, t=40, b=10),
         legend=dict(font=dict(size=9)),
     )
@@ -686,7 +704,7 @@ def fig_cluster_scatter(xcol, ycol):
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="K-Means: segments in feature space",
+        title="K-Means: segmen dalam ruang fitur",
         legend=dict(font=dict(size=9)),
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -696,7 +714,7 @@ def fig_cluster_scatter(xcol, ycol):
 @lru_cache(maxsize=32)
 def fig_clarans_scatter(xcol, ycol):
     if clarans is None:
-        return blank("CLARANS comparison data not found.")
+        return blank("Data perbandingan CLARANS tidak ditemukan.")
     d = clarans.dropna(subset=[xcol, ycol]).copy()
     d = (
         d[(d[xcol] > 0) & (d[ycol] > 0)]
@@ -721,7 +739,7 @@ def fig_clarans_scatter(xcol, ycol):
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="CLARANS (medoid-based): same 4,000-application sample",
+        title="CLARANS (berbasis medoid): sampel 4.000 aplikasi yang sama",
         legend=dict(font=dict(size=9)),
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -734,7 +752,7 @@ def fig_method_comparison():
     (DBSCAN runs on a different, 20k-row sample and produces a variable cluster count,
     so it gets its own dedicated view instead of forcing it into this comparison)."""
     if clarans is None:
-        return blank("CLARANS comparison data not found.")
+        return blank("Data perbandingan CLARANS tidak ditemukan.")
     km = clarans["kmeans_cluster"].value_counts().sort_index()
     cl = clarans["clarans_cluster"].value_counts().sort_index()
     idx = sorted(set(km.index) | set(cl.index))
@@ -757,13 +775,13 @@ def fig_method_comparison():
         color="method",
         barmode="group",
         color_discrete_map={name: color for name, _, color in methods},
-        labels={"cluster": "Cluster #", "count": "Applications (4k sample)"},
+        labels={"cluster": "Cluster #", "count": "Aplikasi (sampel 4rb)"},
     )
     f.update_layout(
         template=TEMPLATE,
         height=380,
         margin=dict(l=10, r=10, t=40, b=10),
-        title="Do K-Means, CLARANS and Hierarchical agree on cluster sizes? (same 4,000-row sample)",
+        title="Apakah K-Means, CLARANS, dan Hierarchical sepakat soal ukuran cluster? (sampel 4.000 baris yang sama)",
     )
     return f
 
@@ -771,7 +789,7 @@ def fig_method_comparison():
 @lru_cache(maxsize=32)
 def fig_hierarchical_scatter(xcol, ycol):
     if hier_scatter is None:
-        return blank("Hierarchical comparison data not found.")
+        return blank("Data perbandingan Hierarchical tidak ditemukan.")
     d = hier_scatter.dropna(subset=[xcol, ycol]).copy()
     d = (
         d[(d[xcol] > 0) & (d[ycol] > 0)]
@@ -796,7 +814,7 @@ def fig_hierarchical_scatter(xcol, ycol):
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="Hierarchical (Ward linkage): same 4,000-application sample",
+        title="Hierarchical (Ward linkage): sampel 4.000 aplikasi yang sama",
         legend=dict(font=dict(size=9)),
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -824,7 +842,7 @@ def fig_dbscan_sizes():
         y="count",
         color="is_noise",
         color_discrete_map={True: RED, False: STEEL},
-        labels={"cluster": "DBSCAN cluster", "count": "Applications (20k sample)"},
+        labels={"cluster": "DBSCAN cluster", "count": "Aplikasi (sampel 20rb)"},
     )
     f.update_layout(
         template=TEMPLATE,
@@ -851,7 +869,7 @@ def fig_dbscan_scatter(xcol, ycol):
         else d
     )
     d["Status"] = np.where(
-        d["dbscan_cluster"] == -1, "Noise (unclustered)", "Clustered"
+        d["dbscan_cluster"] == -1, "Noise (tak ter-cluster)", "Ter-cluster"
     )
     logx = xcol in ("loan_amount", "property_value", "income")
     logy = ycol in ("loan_amount", "property_value", "income")
@@ -860,7 +878,7 @@ def fig_dbscan_scatter(xcol, ycol):
         x=xcol,
         y=ycol,
         color="Status",
-        color_discrete_map={"Clustered": STEEL, "Noise (unclustered)": RED},
+        color_discrete_map={"Ter-cluster": STEEL, "Noise (tak ter-cluster)": RED},
         opacity=0.6,
         log_x=logx,
         log_y=logy,
@@ -870,7 +888,7 @@ def fig_dbscan_scatter(xcol, ycol):
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="DBSCAN (density-based): same 20,000-application sample",
+        title="DBSCAN (berbasis densitas): sampel 20.000 aplikasi yang sama",
         legend=dict(font=dict(size=9)),
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -891,22 +909,22 @@ def fig_rules_table_df(df, outcome, min_lift=1.0):
     if d is None:
         return None
     cols = {
-        "if_readable": "If (applicant/loan profile)",
-        "then": "Then",
-        "recommendation": "Business recommendation",
+        "if_readable": "Jika (profil pemohon/loan)",
+        "then": "Maka",
+        "recommendation": "Rekomendasi bisnis",
     }
     keep = [
-        "If (applicant/loan profile)",
-        "Then",
+        "Jika (profil pemohon/loan)",
+        "Maka",
         "Support",
         "Confidence",
         "Lift",
         "n",
-        "Business recommendation",
+        "Rekomendasi bisnis",
     ]
     if "kept" in d.columns:
-        cols["kept"] = "Business-relevant?"
-        keep.insert(1, "Business-relevant?")
+        cols["kept"] = "Relevan bisnis?"
+        keep.insert(1, "Relevan bisnis?")
     if not len(d):
         return pd.DataFrame(columns=keep)
     d = d.copy()
@@ -921,7 +939,7 @@ def fig_rules_table_df(df, outcome, min_lift=1.0):
 def fig_rules_scatter(df, outcome, min_lift=1.0):
     d = _filter_rules(df, outcome, min_lift)
     if d is None or not len(d):
-        return blank("No rules match this filter.")
+        return blank("Tidak ada aturan yang cocok dengan filter ini.")
     if outcome == "All":
         f = px.scatter(
             d,
@@ -933,8 +951,8 @@ def fig_rules_scatter(df, outcome, min_lift=1.0):
             hover_name="if_readable",
             size_max=30,
             labels={
-                "support": "Support (how common)",
-                "confidence": "Confidence (how reliable)",
+                "support": "Support (seberapa umum)",
+                "confidence": "Confidence (seberapa andal)",
                 "then": "",
             },
         )
@@ -951,15 +969,15 @@ def fig_rules_scatter(df, outcome, min_lift=1.0):
             hover_name="if_readable",
             size_max=30,
             labels={
-                "support": "Support (how common)",
-                "confidence": "Confidence (how reliable)",
+                "support": "Support (seberapa umum)",
+                "confidence": "Confidence (seberapa andal)",
             },
         )
     f.update_layout(
         template=TEMPLATE,
         height=380,
         coloraxis_showscale=False,
-        title=f"{'All' if outcome == 'All' else outcome!r} rules: support vs confidence (bubble = lift)",
+        title=f"Aturan {'Semua' if outcome == 'All' else outcome!r}: support vs confidence (bubble = lift)",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     return f
@@ -968,7 +986,7 @@ def fig_rules_scatter(df, outcome, min_lift=1.0):
 def fig_rule_network(df, outcome, min_lift=1.0):
     d = _filter_rules(df, outcome, min_lift)
     if d is None or not len(d):
-        return blank("No rules match this filter.")
+        return blank("Tidak ada aturan yang cocok dengan filter ini.")
     G = nx.DiGraph()
     for _, r in d.iterrows():
         sink = str(r["then"]).upper()
@@ -1008,9 +1026,9 @@ def fig_rule_network(df, outcome, min_lift=1.0):
     )
     f = go.Figure([edges, nodes])
     title = (
-        "What drives DENIED vs. ORIGINATED"
+        "Apa pendorong DENIED vs. ORIGINATED"
         if outcome == "All"
-        else f"What drives {outcome.upper()}"
+        else f"Apa pendorong {outcome.upper()}"
     )
     f.update_layout(
         template=TEMPLATE,
@@ -1044,14 +1062,14 @@ def fig_anomaly_scatter():
         labels={
             "income": "Income ($k, log)",
             "loan_amount": "Loan Amount ($, log)",
-            "anomaly_votes": "Methods Flagging",
+            "anomaly_votes": "Jumlah metode menandai",
         },
     )
     f.update_layout(
         template=TEMPLATE,
         height=420,
         margin=dict(l=10, r=10, t=40, b=10),
-        title="Outliers: extreme loan/income combinations rise to the top-right",
+        title="Outlier: kombinasi loan/income ekstrem naik ke kanan-atas",
     )
     return f
 
@@ -1065,12 +1083,12 @@ def fig_iso_hist():
         x="iso_score",
         nbins=60,
         color_discrete_sequence=[STEEL],
-        labels={"iso_score": "Isolation-Forest Anomaly Score"},
+        labels={"iso_score": "Skor Anomali Isolation-Forest"},
     )
     f.update_layout(
         template=TEMPLATE,
         height=300,
-        title="Anomaly-score distribution (tail = outliers)",
+        title="Distribusi skor anomali (ekor = outlier)",
         margin=dict(l=10, r=10, t=40, b=10),
         bargap=0.02,
     )
@@ -1090,13 +1108,13 @@ def fig_vote_breakdown():
         text="rows",
         color="votes",
         color_continuous_scale="OrRd",
-        labels={"votes": "# methods agreeing", "rows": "Records"},
+        labels={"votes": "# metode sepakat", "rows": "Rekaman"},
     )
     f.update_layout(
         template=TEMPLATE,
         height=300,
         coloraxis_showscale=False,
-        title="Detector agreement (3+ = high-confidence anomaly)",
+        title="Kesepakatan detektor (3+ = anomali keyakinan tinggi)",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     return f
@@ -1126,7 +1144,7 @@ TAXONOMY_COLOR = {
 @lru_cache(maxsize=32)
 def fig_outlier_taxonomy(xcol, ycol):
     if outlier_tax is None or not len(outlier_tax):
-        return blank("Outlier taxonomy data not found.")
+        return blank("Data taksonomi outlier tidak ditemukan.")
     d = outlier_tax.dropna(subset=[xcol, ycol]).copy()
     d = (
         d[(d[xcol] > 0) & (d[ycol] > 0)]
@@ -1155,7 +1173,7 @@ def fig_outlier_taxonomy(xcol, ycol):
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="Where each outlier type sits in feature space",
+        title="Posisi tiap tipe outlier dalam ruang fitur",
         legend=dict(font=dict(size=10)),
         margin=dict(l=10, r=10, t=40, b=10),
     )
@@ -1217,14 +1235,14 @@ def fig_disparity():
         color_discrete_sequence=px.colors.sequential.Blues_r,
         labels={
             "derived_race": "",
-            "approval_rate_pct": "Approval rate (%)",
-            "tract_minority_cat": "Tract Minority Level",
+            "approval_rate_pct": "Tingkat persetujuan (%)",
+            "tract_minority_cat": "Tingkat Minoritas Tract",
         },
     )
     f.update_layout(
         template=TEMPLATE,
         height=460,
-        title="Approval rate by race × neighbourhood minority level",
+        title="Tingkat persetujuan menurut ras × tingkat minoritas lingkungan",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     f.update_xaxes(tickangle=-35, automargin=True, tickfont=dict(size=10.5))
@@ -1243,8 +1261,8 @@ def fig_dti_geo_gap():
     )
     d["tract"] = d["tract"].map(
         {
-            "low_minority_approval_pct": "Low-minority tract",
-            "majority_minority_approval_pct": "Majority-minority tract",
+            "low_minority_approval_pct": "Tract minoritas-rendah",
+            "majority_minority_approval_pct": "Tract mayoritas-minoritas",
         }
     )
     f = px.bar(
@@ -1254,13 +1272,13 @@ def fig_dti_geo_gap():
         color="tract",
         barmode="group",
         color_discrete_map={
-            "Low-minority tract": STEEL,
-            "Majority-minority tract": RED,
+            "Tract minoritas-rendah": STEEL,
+            "Tract mayoritas-minoritas": RED,
         },
         text=d["approval_pct"].map(lambda v: f"{v:.0f}%"),
         labels={
-            "dti_group": "Debt-to-income band",
-            "approval_pct": "Approval rate (%)",
+            "dti_group": "Band debt-to-income",
+            "approval_pct": "Tingkat persetujuan (%)",
             "tract": "",
         },
     )
@@ -1269,7 +1287,7 @@ def fig_dti_geo_gap():
         template=TEMPLATE,
         height=400,
         margin=dict(l=10, r=10, t=40, b=10),
-        title="The gap survives controlling for DTI: it does not close within DTI bands",
+        title="Selisih bertahan setelah mengontrol DTI: tidak menutup dalam band DTI",
     )
     f.update_xaxes(automargin=True, tickfont=dict(size=11))
     f.update_yaxes(range=[0, 100])
@@ -1298,7 +1316,7 @@ def fig_denial_reasons():
         template=TEMPLATE,
         height=360,
         coloraxis_showscale=False,
-        title="Lender-stated denial reasons (validates the DTI finding)",
+        title="Alasan penolakan menurut lender (memvalidasi temuan DTI)",
         margin=dict(l=10, r=60, t=30, b=10),
     )
     f.update_xaxes(range=[0, 42])
@@ -1330,8 +1348,8 @@ def fig_approval_by_dti():
         color="_approved",
         color_continuous_scale=["#c0392b", "#e0a82e", "#2e8b57"],
         labels={
-            "debt_to_income_ratio": "Debt-to-income band",
-            "_approved": "Approval rate (%)",
+            "debt_to_income_ratio": "Band debt-to-income",
+            "_approved": "Tingkat persetujuan (%)",
         },
     )
     f.update_traces(textposition="outside", cliponaxis=False)
@@ -1339,7 +1357,7 @@ def fig_approval_by_dti():
         template=TEMPLATE,
         height=360,
         coloraxis_showscale=False,
-        title="Approval collapses as debt-to-income rises",
+        title="Persetujuan anjlok saat debt-to-income naik",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     f.update_xaxes(automargin=True, tickfont=dict(size=11))
@@ -1371,8 +1389,8 @@ def fig_gauge(value, title, good_high=True):
 
 
 STATE_METRICS = {
-    "approval_rate": ("Approval rate (%)", ["#c0392b", "#e0a82e", "#2e8b57"]),
-    "n": ("Applications (volume)", "Blues"),
+    "approval_rate": ("Tingkat persetujuan (%)", ["#c0392b", "#e0a82e", "#2e8b57"]),
+    "n": ("Aplikasi (volume)", "Blues"),
     "median_income": ("Median income ($k)", "Greens"),
     "median_loan": ("Median loan amount ($)", "Purples"),
 }
@@ -1381,9 +1399,9 @@ STATE_METRICS = {
 @lru_cache(maxsize=8)
 def fig_state_map(metric):
     if state_summary is None or not len(state_summary):
-        return blank("State summary data not found. Run the notebook first.")
+        return blank("Data ringkasan negara bagian tidak ditemukan. Jalankan notebook dulu.")
     d = state_summary.copy()
-    label, scale = STATE_METRICS.get(metric, ("Value", "Blues"))
+    label, scale = STATE_METRICS.get(metric, ("Nilai", "Blues"))
     f = px.choropleth(
         d,
         locations="state_code",
@@ -1404,10 +1422,10 @@ def fig_state_map(metric):
     # the state code); "%{location}" is the correct token for a choropleth's `locations` column.
     f.update_traces(
         hovertemplate="<b>%{location}</b><br>Applications: %{customdata[0]:,}<br>"
-        "Approval rate: %{customdata[1]:.1f}%<br>"
+        "Tingkat persetujuan: %{customdata[1]:.1f}%<br>"
         "Median income: $%{customdata[2]:.0f}k<br>"
         "Median loan: $%{customdata[3]:,.0f}<br>"
-        "Top denial reason: %{customdata[4]}<extra></extra>"
+        "Alasan penolakan teratas: %{customdata[4]}<extra></extra>"
     )
     f.update_layout(
         template=TEMPLATE,
@@ -1443,8 +1461,8 @@ def fig_state_dti(state):
         color="approval_rate",
         color_continuous_scale=["#c0392b", "#e0a82e", "#2e8b57"],
         labels={
-            "dti_band": "Debt-to-income band",
-            "approval_rate": "Approval rate (%)",
+            "dti_band": "Band debt-to-income",
+            "approval_rate": "Tingkat persetujuan (%)",
         },
     )
     f.update_traces(textposition="outside", cliponaxis=False)
@@ -1495,16 +1513,16 @@ def _geo_state_detail_children(state):
     appr = float(row["approval_rate"])
     color = GREEN if appr >= 70 else (AMBER if appr >= 50 else RED)
     state_kpis = [
-        ("Applications", f"{int(row['n']):,}", STEEL),
-        ("Approval rate", f"{appr:.1f}%", color),
+        ("Aplikasi", f"{int(row['n']):,}", STEEL),
+        ("Tingkat persetujuan", f"{appr:.1f}%", color),
         ("Median income", f"${row['median_income']:.0f}k", TEAL),
         ("Median loan", f"${row['median_loan']:,.0f}", NAVY),
-        ("Top denial reason", str(row["top_denial_reason"]), "#7d3c98"),
+        ("Alasan penolakan teratas", str(row["top_denial_reason"]), "#7d3c98"),
     ]
     return html.Div(
         [
             html.Div(
-                f"Showing: {state}",
+                f"Menampilkan: {state}",
                 style={"fontSize": "12px", "color": MUTE, "marginBottom": "6px"},
             ),
             html.Div(
@@ -1560,10 +1578,10 @@ def fig_term_range_detail(lo_idx, hi_idx):
         [
             html.Div(
                 [
-                    kpi_card("Duration range", label, NAVY),
-                    kpi_card("Applications", f"{n_tot:,}", STEEL),
-                    kpi_card("Approval rate", f"{appr:.1f}%", color),
-                    kpi_card("High-DTI share (>=50%)", f"{hidti:.1f}%", AMBER),
+                    kpi_card("Rentang durasi", label, NAVY),
+                    kpi_card("Aplikasi", f"{n_tot:,}", STEEL),
+                    kpi_card("Tingkat persetujuan", f"{appr:.1f}%", color),
+                    kpi_card("Porsi high-DTI (>=50%)", f"{hidti:.1f}%", AMBER),
                 ],
                 style={"display": "flex", "gap": "12px", "flexWrap": "wrap"},
             ),
@@ -1769,8 +1787,6 @@ def _table(df, cols=None, style_data_conditional=None):
         page_action="native",
         sort_action="native",
         sort_mode="multi",
-        export_format="csv",
-        export_headers="display",
         style_as_list_view=True,
         style_table={
             "borderRadius": "12px",
@@ -1826,13 +1842,13 @@ def _profiles_cards():
                                 },
                             ),
                             html.Span(
-                                f"  {r['share_of_data']:.1f}% of applications",
+                                f"  {r['share_of_data']:.1f}% dari aplikasi",
                                 style={"fontSize": "11px", "color": MUTE},
                             ),
                         ]
                     ),
                     html.Div(
-                        f"{r['approval_rate']:.0f}% approved",
+                        f"{r['approval_rate']:.0f}% disetujui",
                         style={
                             "fontSize": "20px",
                             "fontWeight": "800",
@@ -1847,7 +1863,7 @@ def _profiles_cards():
                     html.Div(
                         [
                             html.Span(
-                                "Recommended approach: ",
+                                "Pendekatan yang disarankan: ",
                                 style={"fontWeight": "700", "color": NAVY},
                             ),
                             cluster_recommendation(r),
@@ -2198,8 +2214,8 @@ def data_health_banner():
     if not DATA_LOAD_ISSUES:
         return html.Div(
             [
-                html.Span("Data ready", style={"fontWeight": "800", "color": GREEN}),
-                html.Span(f" · loaded from {DATA_DIR}", style={"color": MUTE}),
+                html.Span("Data siap", style={"fontWeight": "800", "color": GREEN}),
+                html.Span(f" · dimuat dari {DATA_DIR}", style={"color": MUTE}),
             ],
             style={"fontSize": "11px", "padding": "0 24px 8px"},
         )
@@ -2212,7 +2228,7 @@ def data_health_banner():
         preview += f"; +{extra} more"
     return html.Div(
         [
-            html.Span("Data warning", style={"fontWeight": "800", "color": AMBER}),
+            html.Span("Peringatan data", style={"fontWeight": "800", "color": AMBER}),
             html.Span(f" · {preview}", style={"color": MUTE}),
         ],
         style={
@@ -2257,19 +2273,19 @@ def build_discovery() -> str:
     )
     if denial_rule is None:
         return (
-            "The dashboard is ready, but the curated rule export is unavailable. "
-            "Check the data warning before interpreting the analytical tabs."
+            "Dashboard sudah siap, tetapi ekspor aturan terkurasi belum tersedia. "
+            "Periksa peringatan data sebelum menafsirkan tab analitis."
         )
     statement = (
-        f"The strongest denial pattern is {denial_rule.get('if_readable', denial_rule.get('antecedent', 'the top rule'))}: "
-        f"{float(denial_rule.get('confidence', 0)) * 100:.1f}% confidence, "
-        f"{float(denial_rule.get('lift', 0)):.2f}× lift, across {int(denial_rule.get('n_matched', 0)):,} applications."
+        f"Pola penolakan terkuat adalah {denial_rule.get('if_readable', denial_rule.get('antecedent', 'aturan teratas'))}: "
+        f"keyakinan {float(denial_rule.get('confidence', 0)) * 100:.1f}%, "
+        f"lift {float(denial_rule.get('lift', 0)):.2f}×, mencakup {int(denial_rule.get('n_matched', 0)):,} aplikasi."
     )
     if np.isfinite(gap):
         statement += (
-            f" Separately, the largest observed low-minority versus majority-minority tract approval gap "
-            f"within a DTI group is {gap:.1f} percentage points; this is an association requiring investigation, "
-            "not evidence of causation."
+            f" Terpisah, selisih tingkat persetujuan terbesar antara tract minoritas-rendah dan "
+            f"mayoritas-minoritas dalam satu kelompok DTI adalah {gap:.1f} poin persentase; ini adalah "
+            "asosiasi yang perlu diselidiki, bukan bukti sebab-akibat."
         )
     return statement
 
@@ -2280,9 +2296,9 @@ def executive_finding_cards():
     if top_denied is not None:
         cards.append(
             finding_card(
-                "1. Strongest denial pattern",
-                f"{top_denied.get('if_readable', top_denied.get('antecedent', 'Rule'))} is denied "
-                f"{float(top_denied.get('confidence', 0)) * 100:.1f}% of the time "
+                "1. Pola penolakan terkuat",
+                f"{top_denied.get('if_readable', top_denied.get('antecedent', 'Aturan'))} ditolak "
+                f"{float(top_denied.get('confidence', 0)) * 100:.1f}% dari waktu "
                 f"(lift {float(top_denied.get('lift', 0)):.2f}×; n={int(top_denied.get('n_matched', 0)):,}).",
                 STEEL,
             )
@@ -2297,9 +2313,9 @@ def executive_finding_cards():
     )
     cards.append(
         finding_card(
-            "2. Anomalies need interpretation",
-            f"{high_conf:,} records receive at least three detector votes. The triage export reviews {reviewed:,} "
-            f"extreme records and labels {data_errors:,} as data errors; the rest should not automatically be treated as bad data.",
+            "2. Anomali perlu interpretasi",
+            f"{high_conf:,} rekaman mendapat setidaknya tiga suara detektor. Triase meninjau {reviewed:,} "
+            f"rekaman ekstrem dan melabeli {data_errors:,} sebagai kesalahan data; sisanya tidak otomatis dianggap data buruk.",
             TEAL,
         )
     )
@@ -2308,9 +2324,9 @@ def executive_finding_cards():
     if non_dti is not None:
         cards.append(
             finding_card(
-                "3. Strongest non-DTI denial pattern",
-                f"{non_dti.get('if_readable', non_dti.get('antecedent', 'Rule'))} is denied "
-                f"{float(non_dti.get('confidence', 0)) * 100:.1f}% of the time "
+                "3. Pola penolakan non-DTI terkuat",
+                f"{non_dti.get('if_readable', non_dti.get('antecedent', 'Aturan'))} ditolak "
+                f"{float(non_dti.get('confidence', 0)) * 100:.1f}% dari waktu "
                 f"(lift {float(non_dti.get('lift', 0)):.2f}×; n={int(non_dti.get('n_matched', 0)):,}).",
                 AMBER,
             )
@@ -2415,7 +2431,7 @@ app.layout = html.Div(
         html.Div(
             [
                 html.Div(
-                    "KNOWLEDGE DISCOVERY DASHBOARD",
+                    "DASHBOARD PENEMUAN PENGETAHUAN",
                     style={
                         "fontSize": "11px",
                         "fontWeight": "700",
@@ -2425,7 +2441,7 @@ app.layout = html.Div(
                     },
                 ),
                 html.H1(
-                    "HMDA 2022 · Mortgage Approval & Denial",
+                    "HMDA 2022 · Persetujuan & Penolakan Kredit Rumah",
                     style={
                         "margin": "0",
                         "fontSize": "27px",
@@ -2435,7 +2451,7 @@ app.layout = html.Div(
                     },
                 ),
                 html.Div(
-                    "Group 4 · Home Mortgage Disclosure Act · 100,000-record sample (CFPB open data)",
+                    "Kelompok 4 · Home Mortgage Disclosure Act · Sampel 100.000 rekaman (data terbuka CFPB)",
                     style={
                         "fontSize": "13px",
                         "color": "rgba(255,255,255,0.78)",
@@ -2454,7 +2470,7 @@ app.layout = html.Div(
         html.Div(
             [
                 html.Div(
-                    "KEY DISCOVERY",
+                    "TEMUAN UTAMA",
                     style={
                         "fontWeight": "800",
                         "color": STEEL,
@@ -2490,16 +2506,14 @@ app.layout = html.Div(
         html.Div(
             dcc.Tabs(
                 id="tabs",
-                value="summary",
+                value="fase1",
                 className="hmda-tabs",
                 children=[
-                    dcc.Tab(label="Executive Summary", value="summary"),
-                    dcc.Tab(label="Geography", value="geography"),
-                    dcc.Tab(label="Segments (Clustering)", value="segments"),
-                    dcc.Tab(label="Rules (Approve vs Deny)", value="rules"),
-                    dcc.Tab(label="Anomalies", value="anomalies"),
-                    dcc.Tab(label="What-If", value="whatif"),
-                    dcc.Tab(label="Fairness", value="fairness"),
+                    dcc.Tab(label="Fase 1 - Prapemrosesan", value="fase1"),
+                    dcc.Tab(label="Fase 2 - Segmentasi (Klaster)", value="fase2"),
+                    dcc.Tab(label="Fase 3 - Aturan Asosiasi", value="fase3"),
+                    dcc.Tab(label="Fase 4 - Deteksi Anomali", value="fase4"),
+                    dcc.Tab(label="Fase 5 - Pelaporan & Keadilan", value="fase5"),
                 ],
             ),
             style={"padding": "18px 24px 0"},
@@ -2514,10 +2528,248 @@ app.layout = html.Div(
 )
 
 
+# ============================================================ Fase 1 (preprocessing)
+_FATE_LABEL = {
+    "dropped": "Dibuang (>40% kosong)",
+    "median_imputed": "Imputasi median",
+    "filled_unknown": "Diisi 'Unknown'",
+}
+_FATE_COLOR = {"dropped": RED, "median_imputed": STEEL, "filled_unknown": AMBER}
+_ROLE_LABEL = {
+    "Strong discovery candidate": "Kandidat kuat",
+    "Moderate discovery candidate": "Kandidat sedang",
+    "Weak / supporting": "Lemah / pendukung",
+}
+
+
+def _stat_tile(label, value, color=NAVY):
+    return html.Div(
+        [
+            html.Div(value, style={"fontSize": "24px", "fontWeight": "800", "color": color}),
+            html.Div(label, style={"fontSize": "11px", "color": MUTE, "marginTop": "2px"}),
+        ],
+        className="hmda-card",
+        style={
+            "flex": "1", "minWidth": "150px", "background": CARD, "borderRadius": "14px",
+            "padding": "14px 16px", "boxShadow": SOFT_SHADOW, "border": f"1px solid {BORDER}",
+        },
+    )
+
+
+def _fase1_content():
+    if phase1_summary is None or not len(phase1_summary):
+        return panel(
+            "Fase 1 - Prapemrosesan",
+            [
+                html.Div(
+                    "Data prapemrosesan belum tersedia. Jalankan notebook (sel "
+                    '"export_phase1_aggregates" pada Fase 5) atau `python app/build_data.py` '
+                    "untuk membuat berkas dash_phase1_*.csv, lalu muat ulang dashboard.",
+                    style={"color": MUTE, "fontSize": "13px", "lineHeight": "1.6"},
+                )
+            ],
+        )
+    s = phase1_summary.iloc[0]
+    tiles = html.Div(
+        [
+            _stat_tile("Baris mentah", f"{int(s['raw_rows']):,}"),
+            _stat_tile("Baris bersih", f"{int(s['clean_rows']):,}", GREEN),
+            _stat_tile("Duplikat dihapus", f"{int(s['duplicates_removed']):,}", AMBER),
+            _stat_tile("Kolom dibuang", f"{int(s['fields_dropped']):,}", RED),
+            _stat_tile("Sel kosong tersisa", f"{int(s['residual_missing_cells']):,}"),
+        ],
+        style={"display": "flex", "gap": "14px", "flexWrap": "wrap", "marginBottom": "16px"},
+    )
+    children = [
+        panel(
+            "Ringkasan pembersihan data",
+            [
+                html.P(
+                    "Alur KDD Fase 1: audit nilai sentinel, analisis missingness struktural, "
+                    "penghapusan duplikat, imputasi, lalu seleksi fitur untuk Fase 2-4.",
+                    style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                ),
+                tiles,
+            ],
+        ),
+        panel(
+            "Segmentasi tipe fitur",
+            [
+                html.P(
+                    "Sebelum analisis, seluruh kolom dipartisi menurut makna dan perlakuan "
+                    "analitisnya. Partisi ini wajib menutup setiap kolom (divalidasi), sehingga tidak "
+                    "ada fitur yang terlewat atau diperlakukan ganda:",
+                    style={"fontSize": "12px", "color": INK, "margin": "0 0 8px"},
+                ),
+                html.Ul(
+                    [
+                        html.Li([html.B("CONTINUOUS"), " - fitur bilangan riil (income, loan_amount, "
+                                 "property_value, CLTV). Diimputasi median lalu diskalakan."]),
+                        html.Li([html.B("STRING_BAND"), " - fitur rentang angka (debt_to_income_ratio, "
+                                 "applicant_age). Dipertahankan sebagai band karena HMDA melaporkannya "
+                                 "sebagai rentang, bukan satu angka."]),
+                        html.Li([html.B("CATEG_CODE"), " - kategorikal berkode (action_taken, "
+                                 "loan_purpose, occupancy_type). Diterjemahkan dari kode angka ke label bermakna."]),
+                        html.Li([html.B("TEXT_CATEG"), " - kategorikal teks (state_code, derived_race). "
+                                 "Dipakai apa adanya."]),
+                        html.Li([html.B("IDS"), " - pengenal (lei, census_tract). Dikecualikan dari pemodelan."]),
+                    ],
+                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
+                           "paddingLeft": "18px"},
+                ),
+                html.P(
+                    "Pemisahan ini penting karena tiap tipe butuh pembersihan, encoding, dan "
+                    "penskalaan yang berbeda. Memperlakukan kode kategorikal sebagai angka kontinu, "
+                    "misalnya, akan menciptakan urutan (ordinality) palsu.",
+                    style={"fontSize": "12px", "color": MUTE, "margin": "10px 0 0"},
+                ),
+            ],
+        ),
+    ]
+
+    if phase1_missing is not None and len(phase1_missing):
+        m = phase1_missing.copy()
+        m["fate_label"] = m["fate"].map(_FATE_LABEL).fillna(m["fate"])
+        fig_m = px.bar(
+            m, x="missing_pct", y="field", orientation="h", color="fate_label",
+            color_discrete_map={_FATE_LABEL[k]: v for k, v in _FATE_COLOR.items()},
+            labels={"missing_pct": "% nilai kosong", "field": "", "fate_label": "Penanganan"},
+        )
+        fig_m.update_layout(
+            template="hmda", height=max(360, 22 * len(m)),
+            yaxis={"categoryorder": "total ascending"},
+            legend={"orientation": "h", "y": -0.14, "title": ""},
+        )
+        children.append(
+            panel(
+                "Missingness per kolom dan penanganannya",
+                [graph(fig_m)],
+                sub="Kolom dengan >40% nilai kosong dibuang; sisanya diimputasi median (fitur "
+                "kontinu) atau diisi 'Unknown' (fitur kategorikal).",
+            )
+        )
+
+    children.append(
+        panel(
+            "Penanganan nilai hilang: metode dan alasannya",
+            [
+                html.Ul(
+                    [
+                        html.Li([html.B("Buang kolom >40% hilang."), " Missingness struktural: "
+                                 "mengimputasi kolom yang mayoritasnya kosong sama saja mengarang data."]),
+                        html.Li([html.B("Fitur CONTINUOUS -> imputasi median."), " Median dipilih, bukan "
+                                 "mean, karena distribusi income/loan/property sangat skewed dengan outlier "
+                                 "ekstrem; median tahan terhadap nilai ekstrem sehingga pusat distribusi tidak "
+                                 "tertarik oleh segelintir nilai raksasa. Median juga transparan dan mudah "
+                                 "diaudit - penting untuk data regulasi. Metode seperti KNN-imputation sengaja "
+                                 "dihindari: mahal pada 100.000 baris dan kurang dapat dijelaskan."]),
+                        html.Li([html.B("Fitur kategorikal -> diisi \"Unknown\"."), " Nilai tidak ditebak. "
+                                 "\"Hilang\" sering bermakna (mis. Exempt / tidak dilaporkan), jadi "
+                                 "dipertahankan sebagai kategori tersendiri, bukan disamarkan."]),
+                        html.Li([html.B("Indikator missingness (_was_missing)."), " Ditambahkan untuk kolom "
+                                 "sinyal utama, sehingga jejak imputasi tetap terekam dan dapat diaudit."]),
+                    ],
+                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
+                           "paddingLeft": "18px"},
+                ),
+            ],
+            sub="Nilai hilang tidak ditangani dengan satu metode seragam, melainkan sesuai tipe fitur "
+            "dan penyebab hilangnya.",
+        )
+    )
+
+    if phase1_features is not None and len(phase1_features):
+        f = phase1_features.copy().sort_values("score").tail(15)
+        if "role" in f.columns:
+            f["role_label"] = f["role"].map(_ROLE_LABEL).fillna(f["role"])
+            color_arg = {
+                "color": "role_label",
+                "color_discrete_map": {
+                    "Kandidat kuat": GREEN, "Kandidat sedang": STEEL, "Lemah / pendukung": MUTE,
+                },
+            }
+        else:
+            color_arg = {}
+        fig_f = px.bar(
+            f, x="score", y="feature", orientation="h",
+            labels={"score": "Skor gabungan (korelasi + mutual information)", "feature": "",
+                    "role_label": "Peran"},
+            **color_arg,
+        )
+        fig_f.update_layout(
+            template="hmda", height=max(360, 26 * len(f)),
+            legend={"orientation": "h", "y": -0.14, "title": ""},
+        )
+        children.append(
+            panel(
+                "Seleksi fitur: pentingnya fitur untuk keputusan persetujuan",
+                [graph(fig_f)],
+                sub="Skor menggabungkan |korelasi| (hubungan linear) dan mutual information "
+                "(relevansi non-linear) terhadap Originated vs Denied. Fitur pasca-keputusan "
+                "dan diagnostik proses dikecualikan dari input Fase 2-4.",
+            )
+        )
+
+    children.append(
+        panel(
+            "Transformasi & penskalaan",
+            [
+                html.Ul(
+                    [
+                        html.Li([html.B("Clustering (Fase 2)."), " Fitur kontinu di-winsorize pada 1%/99% "
+                                 "(mengekang ekor ekstrem agar tidak mendominasi jarak), lalu diskalakan "
+                                 "dengan StandardScaler (z-score) sehingga setiap fitur berkontribusi setara "
+                                 "pada jarak Euclidean K-Means."]),
+                        html.Li([html.B("Deteksi anomali (Fase 4)."), " Memakai RobustScaler (berpusat pada "
+                                 "median, diskalakan dengan IQR). Robust dipilih karena penskalaan tidak boleh "
+                                 "terdistorsi oleh outlier yang justru sedang dicari; median dan IQR tidak "
+                                 "sensitif terhadap nilai ekstrem, sehingga anomali sejati tetap jauh dari "
+                                 "pusat alih-alih menekan skala."]),
+                        html.Li([html.B("Binning domain."), " Diterapkan pada income, loan amount, property "
+                                 "value, CLTV, tract income, dan tract minority share agar rentang mentah "
+                                 "menjadi kategori yang mudah dibaca untuk association rule mining (Fase 3)."]),
+                    ],
+                    style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0",
+                           "paddingLeft": "18px"},
+                ),
+                html.P(
+                    "Penskalaan sengaja berbeda untuk clustering dan deteksi anomali karena tujuannya "
+                    "berbeda: clustering butuh setiap fitur setara, sedangkan deteksi anomali harus "
+                    "menjaga outlier tetap menonjol.",
+                    style={"fontSize": "12px", "color": MUTE, "margin": "10px 0 0"},
+                ),
+            ],
+        )
+    )
+
+    return html.Div(children)
+
+
 # ============================================================ tab routing
 @app.callback(Output("tab-content", "children"), Input("tabs", "value"))
 @lru_cache(maxsize=8)
 def render(tab):
+    # KDD phase routing. Fase 2/3/4 reuse the existing analytical panels; Fase 5 is the
+    # reporting layer, composed from the executive-summary, geography, what-if and
+    # fairness panels; Fase 1 is the preprocessing view built from dash_phase1_*.csv.
+    if tab == "fase1":
+        return _fase1_content()
+    if tab == "fase2":
+        tab = "segments"
+    elif tab == "fase3":
+        tab = "rules"
+    elif tab == "fase4":
+        tab = "anomalies"
+    elif tab == "fase5":
+        return html.Div(
+            [
+                render("summary"),
+                render("geography"),
+                render("whatif"),
+                render("fairness"),
+            ]
+        )
+
     if tab == "summary":
         return html.Div(
             [
@@ -2534,7 +2786,7 @@ def render(tab):
                     [
                         html.Div(
                             panel(
-                                "Approval rate by segment",
+                                "Tingkat persetujuan per segmen",
                                 [graph(fig_approval_by_cluster())],
                             ),
                             style={"flex": "1", "minWidth": "380px"},
@@ -2560,11 +2812,11 @@ def render(tab):
     if tab == "geography":
         if state_summary is None or not len(state_summary):
             return panel(
-                "Geography",
+                "Geografi",
                 [
                     html.Div(
-                        "State summary data not found. Run the notebook's Phase 5 export (or the "
-                        "dash_state_summary.csv builder) first.",
+                        "Data ringkasan negara bagian tidak ditemukan. Jalankan ekspor Fase 5 notebook (atau "
+                        "pembuat dash_state_summary.csv) dulu.",
                         style={"color": MUTE},
                     )
                 ],
@@ -2579,7 +2831,7 @@ def render(tab):
                         html.Div(
                             [
                                 html.Label(
-                                    "Map metric",
+                                    "Metrik peta",
                                     style={"fontSize": "12px", "color": MUTE},
                                 ),
                                 dcc.Dropdown(
@@ -2598,9 +2850,9 @@ def render(tab):
                     ],
                 ),
                 panel(
-                    "Approval, volume and pricing across the country",
+                    "Persetujuan, volume, dan harga di seluruh negeri",
                     [graph("geo-map")],
-                    sub="Hover a state for a quick summary. Click it to load the fuller breakdown below.",
+                    sub="Arahkan kursor ke sebuah negara bagian untuk ringkasan cepat. Klik untuk memuat rincian lebih lengkap di bawah.",
                 ),
                 html.Div(
                     _geo_state_detail_children(default_state), id="geo-state-detail"
@@ -2612,26 +2864,26 @@ def render(tab):
         return html.Div(
             [
                 panel(
-                    "Clustering method",
+                    "Metode clustering",
                     [
                         dcc.RadioItems(
                             id="cluster-method",
                             value="kmeans",
                             options=[
                                 {
-                                    "label": " K-Means (primary, full 99,995 applications)",
+                                    "label": " K-Means (utama, seluruh 99.995 aplikasi)",
                                     "value": "kmeans",
                                 },
                                 {
-                                    "label": " DBSCAN (density-based, 20,000-row sample)",
+                                    "label": " DBSCAN (berbasis densitas, sampel 20.000 baris)",
                                     "value": "dbscan",
                                 },
                                 {
-                                    "label": " Hierarchical (Ward linkage, 4,000-row sample)",
+                                    "label": " Hierarchical (Ward linkage, sampel 4.000 baris)",
                                     "value": "hierarchical",
                                 },
                                 {
-                                    "label": " CLARANS (k-medoids, 4,000-row sample)",
+                                    "label": " CLARANS (k-medoids, sampel 4.000 baris)",
                                     "value": "clarans",
                                 },
                             ],
@@ -2639,9 +2891,9 @@ def render(tab):
                             style={"fontSize": "12px"},
                         ),
                     ],
-                    sub="All four methods required by the brief: K-Means is the primary segmentation "
-                    "(fitted on the full data); DBSCAN, Hierarchical and CLARANS run on samples "
-                    "for validation and cross-checking, as documented in the notebook's Phase 2.",
+                    sub="Keempat metode diwajibkan oleh brief: K-Means adalah segmentasi utama "
+                    "(dilatih pada seluruh data); DBSCAN, Hierarchical, dan CLARANS dijalankan pada sampel "
+                    "untuk validasi dan cross-check, sebagaimana didokumentasikan di Fase 2 notebook.",
                 ),
                 html.Div(id="segments-method-panel"),
             ]
@@ -2653,33 +2905,34 @@ def render(tab):
         return html.Div(
             [
                 panel(
-                    "Why only 11 are business-relevant?",
+                    "Mengapa hanya 11 yang relevan bisnis?",
                     [
                         html.P(
-                            f"{n_all} candidate rules cleared the support/confidence/lift thresholds, but {n_all - n_biz} "
-                            'were trivial restatements, e.g. adding "White" or "First_Lien" to the DTI>60% rule changed '
-                            "its confidence by less than 2 points. Those are pruned by an improvement filter: a rule only "
-                            "counts if it beats its own best sub-rule by at least 2 percentage points. The business section "
-                            "below shows what survives that filter; the full candidate list, improvement filter and all, "
-                            "is further down for anyone who wants to see everything the miner actually found.",
+                            f"{n_all} aturan kandidat lolos ambang support/confidence/lift, tetapi {n_all - n_biz} "
+                            'merupakan pengulangan trivial, mis. menambahkan "White" atau "First_Lien" ke aturan DTI>60% '
+                            "mengubah confidence-nya kurang dari 2 poin. Aturan seperti itu dipangkas oleh improvement "
+                            "filter: sebuah aturan hanya dihitung bila mengungguli sub-rule terbaiknya minimal 2 poin "
+                            "persentase. Bagian bisnis di bawah menampilkan yang lolos filter itu; daftar kandidat lengkap, "
+                            "berikut improvement filter-nya, ada lebih jauh ke bawah bagi yang ingin melihat semua "
+                            "temuan miner.",
                             style={"fontSize": "12px", "color": INK, "margin": "0"},
                         )
                     ],
                 ),
                 panel(
-                    "Filters",
+                    "Filter",
                     [
                         dcc.RadioItems(
                             id="net-outcome",
                             value="All",
                             options=[
-                                {"label": " All (Denied + Originated)", "value": "All"},
+                                {"label": " Semua (Denied + Originated)", "value": "All"},
                                 {
-                                    "label": " Why applications are DENIED",
+                                    "label": " Mengapa aplikasi DITOLAK",
                                     "value": "Denied",
                                 },
                                 {
-                                    "label": " Why applications are ORIGINATED",
+                                    "label": " Mengapa aplikasi DISETUJUI",
                                     "value": "Originated",
                                 },
                             ],
@@ -2687,7 +2940,7 @@ def render(tab):
                             style={"fontSize": "12px", "marginBottom": "12px"},
                         ),
                         html.Label(
-                            "Minimum lift",
+                            "Lift minimum",
                             style={
                                 "fontSize": "12px",
                                 "color": MUTE,
@@ -2704,31 +2957,31 @@ def render(tab):
                             tooltip={"placement": "bottom", "always_visible": False},
                         ),
                     ],
-                    sub="Applies to both sections below - both respond to the same view and lift floor.",
+                    sub="Berlaku untuk kedua bagian di bawah - keduanya mengikuti tampilan dan ambang lift yang sama.",
                 ),
                 panel(
-                    "Business-relevant rules (survived the improvement filter)",
+                    "Aturan relevan bisnis (lolos improvement filter)",
                     [html.Div(id="rules-table-container")],
                 ),
                 html.Div(
                     [
                         html.Div(
-                            panel("Rule landscape", [graph("rules-scatter")]),
+                            panel("Lanskap aturan", [graph("rules-scatter")]),
                             style={"flex": "1", "minWidth": "360px"},
                         ),
                         html.Div(
-                            panel("Rule network", [graph("rule-network")]),
+                            panel("Jaringan aturan", [graph("rule-network")]),
                             style={"flex": "1", "minWidth": "360px"},
                         ),
                     ],
                     style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
                 ),
                 panel(
-                    "All candidate rules (raw, before pruning)",
+                    "Semua aturan kandidat (mentah, sebelum pruning)",
                     [html.Div(id="rules-all-table-container")],
-                    sub="Every rule that cleared the mining thresholds (lift > 1.2, confidence >= 55%), including "
-                    'the ones the improvement filter later dropped. "Business-relevant?" marks which ones '
-                    "survived into the curated set above.",
+                    sub="Setiap aturan yang lolos ambang mining (lift > 1.2, confidence >= 55%), termasuk "
+                    'yang kemudian dibuang oleh improvement filter. "Relevan bisnis?" menandai mana yang '
+                    "bertahan ke dalam set terkurasi di atas.",
                 ),
             ]
         )
@@ -2755,26 +3008,32 @@ def render(tab):
             if collective_pattern is not None and len(collective_pattern)
             else None
         )
+        coll_n = (
+            int(collective_pattern["loans_ge_1m"].iloc[0])
+            if collective_pattern is not None and len(collective_pattern)
+            else None
+        )
         return html.Div(
             [
                 panel(
-                    "How to read this",
+                    "Cara membaca ini",
                     [
                         html.P(
-                            f"Four detectors (IQR, Z-score, Isolation Forest, LOF) plus DBSCAN-noise cross-reference vote "
-                            f"on every application; {n_hc:,} are high-confidence anomalies (3+ methods agree). The 15 most "
-                            f'extreme were hand-triaged into a verdict with evidence, not just flagged as "weird".',
+                            f"Empat detektor (IQR, Z-score, Isolation Forest, LOF) ditambah DBSCAN-noise saling "
+                            f"memberi suara pada tiap aplikasi; {n_hc:,} adalah anomali keyakinan tinggi (3+ metode "
+                            f'sepakat). 15 yang paling ekstrem ditriase manual menjadi verdict beserta bukti, bukan '
+                            f'sekadar ditandai "aneh".',
                             style={"fontSize": "12px", "color": INK, "margin": "0"},
                         )
                     ],
                 ),
                 panel(
-                    "Outlier taxonomy: global, contextual and collective",
+                    "Taksonomi outlier: global, kontekstual, dan kolektif",
                     [
                         html.P(
-                            "Data-mining theory splits outliers into three kinds. This pipeline's five detectors "
-                            "split cleanly across two of them, which is itself a finding worth presenting: the two "
-                            "detection philosophies catch substantially different records.",
+                            "Teori data-mining membagi outlier menjadi tiga jenis. Kelima detektor pipeline ini "
+                            "terbagi rapi ke dalam dua di antaranya, dan itu sendiri temuan yang layak disajikan: "
+                            "kedua filosofi deteksi menangkap rekaman yang jauh berbeda.",
                             style={
                                 "fontSize": "12px",
                                 "color": INK,
@@ -2786,7 +3045,7 @@ def render(tab):
                                 html.Div(
                                     [
                                         html.Div(
-                                            "GLOBAL OUTLIERS",
+                                            "OUTLIER GLOBAL",
                                             style={
                                                 "fontWeight": "800",
                                                 "color": TAXONOMY_COLOR[
@@ -2806,7 +3065,7 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            f"{n_global/n_total*100:.1f}% of applications",
+                                            f"{n_global/n_total*100:.1f}% dari aplikasi",
                                             style={
                                                 "fontSize": "11px",
                                                 "color": MUTE,
@@ -2814,9 +3073,9 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "Detected by IQR, Z-score and Isolation Forest: records that deviate from "
-                                            "the WHOLE dataset's distribution, unconditionally (e.g. a $130M property "
-                                            "value - extreme no matter what else is true about the record).",
+                                            "Terdeteksi oleh IQR, Z-score, dan Isolation Forest: rekaman yang menyimpang dari "
+                                            "distribusi SELURUH dataset, tanpa syarat (mis. property value $130 juta "
+                                            "- ekstrem apa pun konteks rekamannya).",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -2839,7 +3098,7 @@ def render(tab):
                                 html.Div(
                                     [
                                         html.Div(
-                                            "CONTEXTUAL / LOCAL OUTLIERS",
+                                            "OUTLIER KONTEKSTUAL / LOKAL",
                                             style={
                                                 "fontWeight": "800",
                                                 "color": TAXONOMY_COLOR[
@@ -2859,7 +3118,7 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            f"{n_local/n_total*100:.1f}% of applications",
+                                            f"{n_local/n_total*100:.1f}% dari aplikasi",
                                             style={
                                                 "fontSize": "11px",
                                                 "color": MUTE,
@@ -2867,9 +3126,9 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "Detected by LOF and DBSCAN-noise: records that look ordinary by every "
-                                            "single-feature threshold, but sit in a sparse neighbourhood relative to "
-                                            "similar applications - unusual only given that local context.",
+                                            "Terdeteksi oleh LOF dan DBSCAN-noise: rekaman yang tampak biasa pada setiap "
+                                            "ambang fitur tunggal, tetapi berada di lingkungan yang jarang relatif "
+                                            "terhadap aplikasi serupa - tidak biasa hanya dalam konteks lokal itu.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -2892,7 +3151,7 @@ def render(tab):
                                 html.Div(
                                     [
                                         html.Div(
-                                            "BOTH",
+                                            "KEDUANYA",
                                             style={
                                                 "fontWeight": "800",
                                                 "color": TAXONOMY_COLOR[
@@ -2912,7 +3171,7 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            f"{n_both/n_total*100:.1f}% of applications",
+                                            f"{n_both/n_total*100:.1f}% dari aplikasi",
                                             style={
                                                 "fontSize": "11px",
                                                 "color": MUTE,
@@ -2920,9 +3179,9 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "Flagged by at least one global AND one contextual/local method - the "
-                                            "highest-confidence anomalies, and exactly the pool the top-15 hand-triage "
-                                            "(below) was drawn from.",
+                                            "Ditandai oleh setidaknya satu metode global DAN satu kontekstual/lokal - "
+                                            "anomali dengan keyakinan tertinggi, dan tepat kumpulan tempat hand-triage "
+                                            "top-15 (di bawah) diambil.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -2945,7 +3204,7 @@ def render(tab):
                                 html.Div(
                                     [
                                         html.Div(
-                                            "COLLECTIVE OUTLIERS",
+                                            "OUTLIER KOLEKTIF",
                                             style={
                                                 "fontWeight": "800",
                                                 "color": AMBER,
@@ -2955,8 +3214,8 @@ def render(tab):
                                         ),
                                         html.Div(
                                             (
-                                                f"{coll_pct:.0f}%"
-                                                if coll_pct is not None
+                                                f"{coll_n:,} loans"
+                                                if coll_n is not None
                                                 else "N/A"
                                             ),
                                             style={
@@ -2967,7 +3226,11 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "of loans >= $1M share one trait",
+                                            (
+                                                f">= $1M - {coll_pct:.0f}% berakhiran \"...5,000\""
+                                                if coll_pct is not None
+                                                else "dari loan >= $1M berbagi satu ciri"
+                                            ),
                                             style={
                                                 "fontSize": "11px",
                                                 "color": MUTE,
@@ -2975,10 +3238,10 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "None of the 5 detectors targets this class (they all score individual "
-                                            'records). Every loan >= $1M reports an amount ending in "...5,000" - HMDA\'s '
-                                            "mandatory rounding-to-nearest-$10k-midpoint rule. No single loan is odd; "
-                                            "the group-wide pattern is a data-generating-process signature, not a risk signal.",
+                                            "Tidak ada dari ke-5 detektor yang menyasar kelas ini (semuanya menilai "
+                                            'rekaman individual). Setiap loan >= $1M melaporkan nilai berakhiran "...5,000" '
+                                            "- aturan pembulatan-ke-titik-tengah-$10k wajib HMDA. Tidak ada satu loan pun "
+                                            "yang aneh; pola menyeluruh ini tanda proses pembangkitan data, bukan sinyal risiko.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -3009,44 +3272,44 @@ def render(tab):
                     ],
                 ),
                 panel(
-                    "Explore the taxonomy",
+                    "Jelajahi taksonomi",
                     [
                         _axis_picker("tax-xcol", "tax-ycol", tax_opts),
                         graph("tax-scatter"),
                     ],
-                    sub="Grey points are the ordinary background population (a 4,000-row reference sample). "
-                    "Coloured points are every flagged record, positioned by two attributes of your choosing - "
-                    "notice global outliers cluster at the magnitude extremes while contextual/local outliers "
-                    "sit inside the ordinary-looking range.",
+                    sub="Titik abu-abu adalah populasi latar biasa (sampel acuan 4.000 baris). "
+                    "Titik berwarna adalah setiap rekaman yang ditandai, diposisikan menurut dua atribut pilihan Anda - "
+                    "perhatikan outlier global mengumpul di ekstrem magnitudo, sedangkan outlier kontekstual/lokal "
+                    "berada di dalam rentang yang tampak biasa.",
                 ),
                 panel(
-                    "Named examples",
+                    "Contoh bernama",
                     [_outlier_taxonomy_examples()],
-                    sub="The 3 most extreme records in each non-normal category, by Isolation Forest score.",
+                    sub="3 rekaman paling ekstrem di tiap kategori non-normal, menurut skor Isolation Forest.",
                 ),
                 panel(
-                    "Where the outliers are (income vs. loan amount)",
+                    "Di mana outlier berada (income vs. loan amount)",
                     [graph(fig_anomaly_scatter())],
-                    sub="Top-right = large loans relative to stated income.",
+                    sub="Kanan-atas = loan besar relatif terhadap income yang dilaporkan.",
                 ),
                 html.Div(
                     [
                         html.Div(
-                            panel("Anomaly scores", [graph(fig_iso_hist())]),
+                            panel("Skor anomali", [graph(fig_iso_hist())]),
                             style={"flex": "1", "minWidth": "340px"},
                         ),
                         html.Div(
-                            panel("Method agreement", [graph(fig_vote_breakdown())]),
+                            panel("Kesepakatan metode", [graph(fig_vote_breakdown())]),
                             style={"flex": "1", "minWidth": "340px"},
                         ),
                     ],
                     style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
                 ),
                 panel(
-                    "Most extreme records: triaged with evidence",
+                    "Rekaman paling ekstrem: ditriase dengan bukti",
                     [_anomaly_table()],
-                    sub="Verdict types: RARE BUT VALID (legitimate extreme record) · RISK SIGNAL (unusual but "
-                    "possible) · DATA ERROR (impossible value) · MANUAL REVIEW (hand-checked).",
+                    sub="Jenis verdict: RARE BUT VALID (rekaman ekstrem yang sah) · RISK SIGNAL (tidak biasa tetapi "
+                    "mungkin) · DATA ERROR (nilai mustahil) · MANUAL REVIEW (diperiksa manual).",
                 ),
             ]
         )
@@ -3063,7 +3326,7 @@ def render(tab):
         return html.Div(
             [
                 panel(
-                    "Build an applicant profile",
+                    "Bangun profil pemohon",
                     [
                         html.Div(
                             controls,
@@ -3074,12 +3337,11 @@ def render(tab):
                             },
                         ),
                         html.Div(
-                            "Sliders cover each field's whole range and always have a value (defaulting to "
-                            'the most common band); dropdowns and toggles default to "not specified". The '
-                            "result below is the real historical approval rate among applications that match "
-                            "every attribute selected here at once. It is a direct lookup against historical "
-                            "applications, not a trained predictive model, and it is not a guarantee for any "
-                            "individual applicant.",
+                            "Slider mencakup seluruh rentang tiap field dan selalu punya nilai (default ke band "
+                            'paling umum); dropdown dan toggle default ke "tidak ditentukan". Hasil di bawah adalah '
+                            "tingkat persetujuan historis nyata di antara aplikasi yang cocok dengan semua atribut "
+                            "yang dipilih di sini sekaligus. Ini pencarian langsung terhadap aplikasi historis, "
+                            "bukan model prediktif terlatih, dan bukan jaminan bagi pemohon mana pun.",
                             style={
                                 "fontSize": "11px",
                                 "color": MUTE,
@@ -3089,7 +3351,7 @@ def render(tab):
                     ],
                 ),
                 panel(
-                    "Loan duration",
+                    "Durasi loan",
                     [
                         dcc.Slider(
                             id="wi-term-band",
@@ -3101,10 +3363,10 @@ def render(tab):
                         ),
                         html.Div(id="wi-term-detail", style={"marginTop": "10px"}),
                     ],
-                    sub="HMDA 2022 has no calendar date to filter on (activity_year is constant), so loan "
-                    "duration stands in as the closest thing to a time axis. Shown for context only: it is "
-                    "not part of the combined profile above. 25-year loans are the one exception worth "
-                    "knowing: they dip to 56.2% approval, the highest high-DTI share of any band.",
+                    sub="HMDA 2022 tidak punya tanggal kalender untuk difilter (activity_year konstan), jadi durasi loan "
+                    "menjadi yang paling mendekati sumbu waktu. Ditampilkan hanya sebagai konteks: bukan bagian "
+                    "dari profil gabungan di atas. Loan 25-tahun adalah satu pengecualian yang layak diketahui: "
+                    "turun ke 56,2% persetujuan, porsi high-DTI tertinggi dari semua band.",
                 ),
                 html.Div(id="whatif-result"),
             ]
@@ -3114,24 +3376,24 @@ def render(tab):
         return html.Div(
             [
                 panel(
-                    "Approval by race × neighbourhood",
+                    "Persetujuan menurut ras × lingkungan",
                     [graph(fig_disparity())],
-                    sub="Compare approval rates across demographic groups and tract minority levels.",
+                    sub="Bandingkan tingkat persetujuan antar kelompok demografis dan tingkat minoritas tract.",
                 ),
                 panel(
-                    "Does the gap survive controlling for DTI?",
+                    "Apakah selisih bertahan setelah mengontrol DTI?",
                     [graph(fig_dti_geo_gap())],
-                    sub="Same comparison, split by the strongest predictor of denial in the dataset.",
+                    sub="Perbandingan yang sama, dipisah menurut prediktor penolakan terkuat dalam dataset.",
                 ),
                 panel(
-                    "How to read this",
+                    "Cara membaca ini",
                     [
                         html.P(
-                            "The Rules tab shows denials track debt-to-income, not race: adding race to the core DTI "
-                            "rule barely moves its lift. This is the cross-check: equal financial profiles should show "
-                            "equal approval rates. The gap does not close within DTI bands (it is largest, 12.1 points, "
-                            "in the lowest-risk, low-DTI group), a residual, unexplained pattern that merits further "
-                            "fair-lending investigation, association only, not a causal finding.",
+                            "Tab Aturan menunjukkan penolakan mengikuti debt-to-income, bukan ras: menambahkan ras ke aturan DTI "
+                            "inti nyaris tidak menggeser lift-nya. Ini cross-check-nya: profil finansial yang setara semestinya "
+                            "menunjukkan tingkat persetujuan yang setara. Selisih tidak menutup dalam band DTI (terbesar, 12,1 "
+                            "poin, pada kelompok berisiko-terendah, DTI-rendah), sebuah pola residual tak terjelaskan yang layak "
+                            "diselidiki lebih lanjut untuk fair-lending, asosiasi semata, bukan temuan kausal.",
                             style={"fontSize": "13px", "color": INK},
                         )
                     ],
@@ -3186,21 +3448,21 @@ def _cb_segments(method):
         return html.Div(
             [
                 panel(
-                    "DBSCAN cluster sizes",
+                    "Ukuran cluster DBSCAN",
                     [graph(fig_dbscan_sizes())],
-                    sub=f"eps chosen from the k-distance knee (min_samples = 2 x feature count): 17 density "
-                    f"clusters plus noise. {n_noise:,} of {n_total:,} applications ({pct:.1f}%) don't "
-                    "belong to any dense region - these noise points are exactly the input Phase 4's "
-                    "anomaly ensemble cross-references (see Anomalies tab).",
+                    sub=f"eps dipilih dari knee k-distance (min_samples = 2 x jumlah fitur): 17 cluster densitas "
+                    f"plus noise. {n_noise:,} dari {n_total:,} aplikasi ({pct:.1f}%) tidak "
+                    "termasuk region padat mana pun - titik noise inilah input yang di-cross-reference "
+                    "oleh ensemble anomali Fase 4 (lihat tab Anomali).",
                 ),
                 panel(
-                    "Explore the DBSCAN result",
+                    "Jelajahi hasil DBSCAN",
                     [
                         _axis_picker("dbscan-xcol", "dbscan-ycol", opts),
                         graph("dbscan-scatter"),
                     ],
-                    sub="Coloured by noise vs. clustered only (not by individual cluster id) - with 17 clusters, "
-                    "a per-cluster hue scatter would blow past the validated categorical colour limit.",
+                    sub="Diwarnai hanya noise vs. clustered (bukan per id cluster) - dengan 17 cluster, "
+                    "scatter berwarna per-cluster akan melampaui batas warna kategorikal yang tervalidasi.",
                 ),
             ]
         )
@@ -3209,14 +3471,14 @@ def _cb_segments(method):
         return html.Div(
             [
                 panel(
-                    "K-Means vs. CLARANS vs. Hierarchical agreement",
+                    "Kesepakatan K-Means vs. CLARANS vs. Hierarchical",
                     [graph(fig_method_comparison())],
-                    sub="Ward linkage cut at K=7 (the silhouette-selected K from section 2.1). Adjusted Rand "
-                    "Index vs. K-Means = 0.907 on the same 4,000-row sample: strong agreement, confirming "
-                    "the segment structure isn't a K-Means artifact.",
+                    sub="Ward linkage dipotong pada K=7 (K terpilih dari silhouette di bagian 2.1). Adjusted Rand "
+                    "Index vs. K-Means = 0,907 pada sampel 4.000 baris yang sama: kesepakatan kuat, menegaskan "
+                    "struktur segmen bukan artefak K-Means.",
                 ),
                 panel(
-                    "Explore the Hierarchical segments",
+                    "Jelajahi segmen Hierarchical",
                     [
                         _axis_picker("hier-xcol", "hier-ycol", opts),
                         graph("hier-scatter"),
@@ -3229,15 +3491,15 @@ def _cb_segments(method):
         return html.Div(
             [
                 panel(
-                    "K-Means vs. CLARANS agreement",
+                    "Kesepakatan K-Means vs. CLARANS",
                     [graph(fig_method_comparison())],
-                    sub="CLARANS (k-medoids) picks real applications as cluster centres instead of synthetic "
-                    "averages, robust to the extreme outliers on the Anomalies tab. Adjusted Rand Index "
-                    "vs. K-Means = 0.711, vs. Ward hierarchical = 0.701: moderate-to-strong agreement, as "
-                    "expected from two different optimisation objectives on the same data.",
+                    sub="CLARANS (k-medoids) memilih aplikasi nyata sebagai pusat cluster alih-alih rata-rata "
+                    "sintetis, robust terhadap outlier ekstrem pada tab Anomali. Adjusted Rand Index "
+                    "vs. K-Means = 0,711, vs. Ward hierarchical = 0,701: kesepakatan sedang-ke-kuat, sesuai "
+                    "harapan dari dua tujuan optimasi berbeda pada data yang sama.",
                 ),
                 panel(
-                    "Explore the CLARANS segments",
+                    "Jelajahi segmen CLARANS",
                     [
                         _axis_picker("clarans-xcol", "clarans-ycol", opts),
                         graph("clarans-scatter"),
@@ -3250,12 +3512,12 @@ def _cb_segments(method):
             html.Div(
                 [
                     html.Div(
-                        panel("Segment sizes", [graph(fig_cluster_sizes())]),
+                        panel("Ukuran segmen", [graph(fig_cluster_sizes())]),
                         style={"flex": "1", "minWidth": "340px"},
                     ),
                     html.Div(
                         panel(
-                            "Approval rate by segment",
+                            "Tingkat persetujuan per segmen",
                             [graph(fig_approval_by_cluster())],
                         ),
                         style={"flex": "1", "minWidth": "340px"},
@@ -3264,15 +3526,15 @@ def _cb_segments(method):
                 style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
             ),
             panel(
-                "Explore the segments",
+                "Jelajahi segmen",
                 [
                     _axis_picker("xcol", "ycol", opts),
                     graph("cluster-scatter"),
                 ],
-                sub="Each point is a loan application, coloured by segment. Pick any two attributes.",
+                sub="Setiap titik adalah satu aplikasi kredit, diwarnai per segmen. Pilih dua atribut apa pun.",
             ),
             panel(
-                "Segment characteristics: what each cluster means for the business",
+                "Karakteristik segmen: makna tiap cluster bagi bisnis",
                 [_profiles_cards()],
             ),
         ]

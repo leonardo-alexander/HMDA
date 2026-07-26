@@ -4,9 +4,14 @@ Extracted from HMDA.ipynb so Phase 1-4 modules and the dashboard's
 build_data.py share one definition instead of duplicating it.
 """
 
+from pathlib import Path
+
 RANDOM_STATE = 42
 
 HF_URL = "https://huggingface.co/datasets/leonardo-alexander/hmda_sample/resolve/main/hmda_sample.csv"
+
+# Local copy of the raw sample, used as a fallback when HF_URL is unreachable.
+LOCAL_RAW = Path(__file__).resolve().parent.parent / "data" / "raw" / "hmda_sample.csv"
 
 # --- Phase 1: column-role segmentation (must partition every raw column) ---
 
