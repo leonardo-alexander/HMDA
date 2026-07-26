@@ -1,0 +1,43 @@
+candidate_source,candidate_id,n,member_individual_flag_rate,score,candidate,evidence
+Business-group IsolationForest,state_x_product: HI | Conventional,293,0.14675767918088736,0.1802444964202461,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: PR | FHA,69,0.18840579710144928,0.13791053182881252,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: HI | Refinance,63,0.09523809523809523,0.13459203292866673,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: PR | Home_Purchase,157,0.21019108280254778,0.09666203093298753,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: HI | Home_Purchase,123,0.17886178861788618,0.08836080077649777,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: HI | CashOut_Refinance,50,0.08,0.0834443543588097,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: MS | Conventional,560,0.15357142857142858,0.07851687402528584,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: HI | Home_Improvement,52,0.15384615384615385,0.07292980401663052,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,purpose_x_construction: NotApplicable | Site_Built,472,0.1059322033898305,0.05484441130623241,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: TX | NotApplicable,65,0.07692307692307693,0.048538553417638686,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: CA | Home_Purchase,3834,0.23369848721961398,0.04316099958478825,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,purpose_x_construction: Home_Improvement | Manufactured,101,0.22772277227722773,0.04241505509236676,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: WA | Conventional,2106,0.1419753086419753,0.03975336249852157,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,purpose_x_construction: Home_Purchase | Manufactured,3730,0.08176943699731903,0.03823867696309302,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: HI | Other,53,0.11320754716981132,0.03731421076801289,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: IA | Other,68,0.19117647058823528,0.036232970803931175,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,purpose_x_construction: Other | Manufactured,86,0.16279069767441862,0.03088761073988422,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: ID | Home_Improvement,102,0.11764705882352941,0.01340793380013583,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: WA | Other,259,0.16216216216216217,0.01267533562379386,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: MS | Other,54,0.16666666666666666,0.00889306800184575,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: MA | Conventional,1710,0.19824561403508772,0.006839404085833056,True,Aggregate business-context profile is unusual under group-level Isolation Forest.
+DBSCAN dense-cluster IsolationForest,DBSCAN C14,35,0.0,0.03588193700786502,True,"Dominant KMeans=C4, purity=1.00. dense unusual pocket aligned with one K-Means segment; likely rare legitimate subsegment"
+DBSCAN dense-cluster IsolationForest,DBSCAN C6,452,0.15486725663716813,0.03334292037350106,True,"Dominant KMeans=C1, purity=1.00. dense unusual pocket aligned with one K-Means segment; likely rare legitimate subsegment"
+DBSCAN dense-cluster IsolationForest,DBSCAN C12,375,0.12266666666666666,0.017371246657088224,True,"Dominant KMeans=C6, purity=1.00. dense unusual pocket aligned with one K-Means segment; likely rare legitimate subsegment"
+DBSCAN dense-cluster IsolationForest,DBSCAN C13,65,0.015384615384615385,0.0056204509610159326,True,"Dominant KMeans=C3, purity=1.00. dense unusual pocket aligned with one K-Means segment; likely rare legitimate subsegment"
+DBSCAN dense-cluster IsolationForest,DBSCAN C16,37,0.05405405405405406,0.0053751005430903165,True,"Dominant KMeans=C4, purity=1.00. dense unusual pocket aligned with one K-Means segment; likely rare legitimate subsegment"
+KMeans structural cluster,KMeans C3,4529,0.08699492161625083,4.0,True,Manufactured-housing applicants; evidence 4/4; spurious-screen=False. stable rare/isolated collective segment — likely legitimate unless domain triage says otherwise
+KMeans structural cluster,KMeans C1,7036,0.22171688459351904,4.0,True,Property investors; evidence 4/4; spurious-screen=False. stable rare/isolated collective segment — likely legitimate unless domain triage says otherwise
+Business-group IsolationForest,state_x_product: DC | Conventional,150,0.4,0.16895271395173117,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: Unknown | Home_Purchase,1090,0.9908256880733946,0.166721553839143,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: Unknown | VA,50,0.98,0.15611498458380435,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: DC | Home_Purchase,86,0.32558139534883723,0.15262595923591038,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: Unknown | FHA,176,1.0,0.14802061780858333,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: CA | Conventional,8195,0.2745576571079927,0.1060253032491465,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: Unknown | Conventional,896,0.9765625,0.09745056803346697,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: CA | Home_Improvement,1025,0.304390243902439,0.08878065913067168,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_product: PR | Conventional,83,0.30120481927710846,0.08246452604098353,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: CA | Other,822,0.3126520681265207,0.07486257873548174,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: CA | Refinance,1396,0.2722063037249284,0.034144359232633925,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+Business-group IsolationForest,state_x_purpose: MA | Refinance,298,0.27181208053691275,0.001989852023947969,False,Aggregate business-context profile is unusual under group-level Isolation Forest.
+DBSCAN dense-cluster IsolationForest,DBSCAN C7,48,0.4583333333333333,0.07822637570989699,False,"Dominant KMeans=C3, purity=1.00. group-level unusual, but many members are already individual anomalies"
+DBSCAN dense-cluster IsolationForest,DBSCAN C9,44,1.0,0.07767448302202007,False,"Dominant KMeans=C4, purity=1.00. group-level unusual, but many members are already individual anomalies"

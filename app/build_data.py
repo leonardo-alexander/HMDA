@@ -118,7 +118,6 @@ def run_phase3(appdeny, denials, ITEM_FEATURES):
     onehot, decision_items, n_before = p3.build_transactions(appdeny, ITEM_FEATURES, 0.02)
     frequent = p3.mine_frequent_itemsets(onehot, 0.02, 3)
     all_rules, decision_rules, dec_supp = p3.extract_decision_rules(frequent, onehot, decision_items)
-    decision_rules.to_csv(DATA_PROCESSED / "p3_decision_rules.csv", index=False)
 
     sig_df = p3.test_significance(decision_rules, onehot, top_n=10)
     sig_df.to_csv(TABLE_DIR / "p3_rule_significance.csv", index=False)
@@ -126,6 +125,19 @@ def run_phase3(appdeny, denials, ITEM_FEATURES):
     final_rules, pruned_away, final_sig = p3.prune_redundant(
         decision_rules, all_rules, dec_supp, onehot, 0.02)
     final_sig.to_csv(DATA_PROCESSED / "p3_decision_rules_final.csv", index=False)
+
+    # Written after pruning so the candidate export carries the verdict and the reason.
+    # prune_redundant adds improvement/best_subrule to decision_rules in place.
+    decision_rules["kept"] = (decision_rules["improvement"] >= 0.02).map({True: "Ya", False: "Tidak"})
+    decision_rules["decision_reason"] = [
+        (f"Confidence unggul {r['improvement']*100:.1f} poin di atas sub-rule terbaiknya "
+         f"({r['best_subrule']}), jadi menambah informasi baru."
+         if r["improvement"] >= 0.02 else
+         f"Cuma unggul {r['improvement']*100:.1f} poin dari {r['best_subrule']}, di bawah "
+         f"ambang 2 poin, jadi dianggap variasi trivial.")
+        for _, r in decision_rules.iterrows()
+    ]
+    decision_rules.to_csv(DATA_PROCESSED / "p3_decision_rules.csv", index=False)
 
     missing_rule_metrics, interpreted_rules = p3.validate_rule_count(final_rules, 10)
     assert not missing_rule_metrics and len(final_rules) >= 10
@@ -148,6 +160,12 @@ def run_phase4(clean, ANOMALY_FEATS, Xa, idx_med, dbscan_noise_ids):
 
     top_anom, show_cols = p4.triage_top(clean, n=15)
     top_anom = p4.resolve_manual_review(top_anom, MANUAL_RESOLUTION)
+
+    # Group-level collective anomalies: the five record-level detectors score rows one at a
+    # time, so a pattern that only exists across a whole group is invisible to all of them.
+    clean, _collective_groups, _flagged = p4.detect_collective_groups(
+        clean, ANOMALY_FEATS, DATA_PROCESSED, RANDOM_STATE)
+
     p4.export_phase4(top_anom, clean, show_cols, DATA_PROCESSED)
 
     print(f"Phase 4: anomaly_votes>=3 -> {(clean['anomaly_votes']>=3).sum():,} rows; "
@@ -257,6 +275,35 @@ def build_geography_gap(piv_rate, piv_n):
     out = pd.DataFrame(rows)
     out.to_csv(DATA_PROCESSED / "dash_dti_geography_gap.csv", index=False)
     print(f"Geography gap: {len(out)} DTI groups")
+
+
+def build_gender_gap(appdeny):
+    """Approval by applicant sex, both overall and stratified by DTI group.
+
+    Same treatment as the tract-minority analysis: a raw gap means little until equal
+    debt burden is compared against equal debt burden, so the DTI split is what decides
+    whether the gap is explained away or survives.
+    """
+    if not {"derived_sex", "target_approved"}.issubset(appdeny.columns):
+        print("Gender gap: derived_sex missing, skipped")
+        return
+    d = appdeny.copy()
+    d["dti_group"] = d["debt_to_income_ratio"].astype(str).map(cfg.DTI_GRP).fillna("Unknown/Exempt")
+
+    overall = (d.groupby("derived_sex")["target_approved"]
+               .agg(n="size", approval_rate="mean").reset_index())
+    overall["approval_rate"] = (overall["approval_rate"] * 100).round(1)
+    overall["dti_group"] = "Semua"
+
+    by_dti = (d.groupby(["derived_sex", "dti_group"])["target_approved"]
+              .agg(n="size", approval_rate="mean").reset_index())
+    by_dti["approval_rate"] = (by_dti["approval_rate"] * 100).round(1)
+
+    out = pd.concat([overall, by_dti], ignore_index=True)
+    out = out[out["n"] >= 30]
+    out.to_csv(DATA_PROCESSED / "dash_gender_gap.csv", index=False)
+    print(f"Gender gap: {out['derived_sex'].nunique()} groups x "
+          f"{out['dti_group'].nunique()} DTI bands")
 
 
 def build_state_aggregates(clean, appdeny, denials):
@@ -388,6 +435,7 @@ def main():
     build_cluster_scatter_extras(clean, idx_med, idx_small, db_labels, hier_labels, clarans_labels)
     build_outlier_taxonomy(clean)
     build_geography_gap(piv_rate, piv_n)
+    build_gender_gap(appdeny)
     build_state_aggregates(clean, appdeny, denials)
     build_term_aggregates(appdeny)
     build_context_fields(appdeny)

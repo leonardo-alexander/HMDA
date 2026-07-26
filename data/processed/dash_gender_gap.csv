@@ -1,0 +1,21 @@
+derived_sex,n,approval_rate,dti_group
+Female,15146,72.3,Semua
+Joint,23753,83.0,Semua
+Male,22458,73.9,Semua
+Sex Not Available,6470,75.7,Semua
+Female,2670,30.8,High(>50%)
+Female,4584,80.9,Low(<36%)
+Female,6931,84.2,Mid(36-50%)
+Female,961,60.2,Unknown/Exempt
+Joint,2640,45.5,High(>50%)
+Joint,9916,88.6,Low(<36%)
+Joint,9968,88.6,Mid(36-50%)
+Joint,1229,72.7,Unknown/Exempt
+Male,3410,35.4,High(>50%)
+Male,8016,80.0,Low(<36%)
+Male,9795,83.2,Mid(36-50%)
+Male,1237,65.9,Unknown/Exempt
+Sex Not Available,772,32.4,High(>50%)
+Sex Not Available,1847,79.4,Low(<36%)
+Sex Not Available,2069,80.8,Mid(36-50%)
+Sex Not Available,1782,84.7,Unknown/Exempt

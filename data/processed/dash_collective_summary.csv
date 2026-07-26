@@ -1,0 +1,2 @@
+grouping_schemes,flagged_groups,pure_collective_groups,unique_member_rows,pct_member_rows,median_member_individual_flag_rate,min_group_n,method
+3,33,21,19393,19.393969698484923,0.19117647058823528,50,IsolationForest on aggregated group profiles

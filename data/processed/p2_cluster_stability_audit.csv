@@ -1,0 +1,8 @@
+kmeans_cluster,segment_name,n,share_pct,mean_silhouette_4k,ward_purity_4k,clarans_purity_4k,weak_size_lt1pct,weak_cohesion_sil_lt005,weak_replication_both_lt050,spurious_cluster_candidate
+0,Refinancers (rate & cash-out),25565,25.566278313915696,0.272083580493927,0.9900596421471173,0.9502982107355865,False,False,False,False
+1,Property investors,7036,7.03635181759088,0.33440133929252625,1.0,1.0,False,False,False,False
+2,Mainstream prime purchasers,36833,36.83484174208711,0.3430216908454895,0.9610561056105611,0.6442244224422442,False,False,False,False
+3,Manufactured-housing applicants,4529,4.529226461323066,0.49498656392097473,1.0,1.0,False,False,False,False
+4,DTI-stressed borrowers,8732,8.732436621831091,0.20853176712989807,0.9970326409495549,1.0,False,False,False,False
+5,Jumbo / high-net-worth buyers,4447,4.4472223611180555,0.16717417538166046,0.583756345177665,0.34517766497461927,False,False,False,False
+6,Small-loan borrowers,12853,12.853642682134106,0.2838537096977234,1.0,1.0,False,False,False,False

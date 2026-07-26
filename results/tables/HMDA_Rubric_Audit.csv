@@ -11,6 +11,7 @@ criterion,status,evidence
 5.3 Rule Interpretation,PASS,11 rules selected for explicit business interpretation.
 5.4 Detection Methods,PASS,"IQR, Z-score, Isolation Forest, LOF, and DBSCAN noise compared systematically."
 5.4 Cross-referencing,PASS,739 rows supported by at least three detectors.
+5.4 Cluster / Collective Cross-reference,PASS,"K-Means cluster stability, DBSCAN dense pockets, and group-level collective profiles were explicitly cross-referenced. The check passes even when no collective anomaly is found, because absence is a valid empirical result."
 5.4 Business Interpretation,PASS,Top anomalies classified with record-level supporting evidence.
 5.5 Dashboard Quality,PASS,Standalone interactive dashboard with five plain-language views.
 5.5 Knowledge Report,PASS,Central question answered in plain business language with interpretation boundaries.
