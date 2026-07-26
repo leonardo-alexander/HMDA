@@ -3409,9 +3409,9 @@ KEY_TAKEAWAYS = [
     ("Penalti manufactured housing",
      "Segmen manufactured housing hanya disetujui 43,1%, dan penaltinya melekat pada jenis "
      "properti, bukan pada income pemohon.", "43,1%", AMBER),
-    ("Alasan penolakan belum terurai",
-     "Hampir tiga perempat penolakan tercatat sebagai Other, sementara DTI yang terbukti paling "
-     "kuat hanya tercatat 8,7%.", "72,9%", STEEL),
+    ("Alasan lender sejalan dengan temuan",
+     "DTI adalah alasan penolakan yang paling sering dicatat lender, menguatkan pola yang "
+     "ditemukan association rule secara terpisah.", "28,2%", STEEL),
     ("Selisih bertahan di kelompok aman",
      "Selisih persetujuan antar lingkungan justru terlebar pada kelompok berisiko rendah, bukan "
      "pada yang berisiko tinggi.", "12,1 poin", NAVY),
@@ -3504,7 +3504,7 @@ def _cluster_feats_details(method):
     return html.Details(
         [
             html.Summary(
-                "Fitur yang dipakai dan cara penskalaannya (klik)",
+                "Fitur yang dipakai dan cara penskalaannya",
                 style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
                        "color": STEEL, "padding": "4px 0", "userSelect": "none"},
             ),
@@ -3588,7 +3588,7 @@ def _rule_features_details():
     return html.Details(
         [
             html.Summary(
-                "Fitur yang dipakai association rules dan perlakuannya (klik)",
+                "Fitur yang dipakai association rules dan perlakuannya",
                 style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
                        "color": STEEL, "padding": "4px 0", "userSelect": "none"},
             ),
@@ -4670,9 +4670,9 @@ def render(tab):
                             "berasal dari algoritmanya.",
                             style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
                         ),
-                        why(WHY_METHODS, "Kenapa empat metode ini? (klik)"),
+                        why(WHY_METHODS, "Kenapa empat metode ini?"),
                         _cluster_feats_details("shared"),
-                        why(WHY_PCA, "Berapa komponen PCA yang dipakai dan kenapa? (klik)"),
+                        why(WHY_PCA, "Berapa komponen PCA yang dipakai dan kenapa?"),
                     ],
                 ),
                 _clustering_comparison_panel(),
@@ -4734,7 +4734,7 @@ def render(tab):
                         ),
                         why(WHY_RULE_PRUNING),
                         _rule_features_details(),
-                        why(WHY_RULE_FEATS, "Kenapa fitur-fitur itu yang dipakai? (klik)"),
+                        why(WHY_RULE_FEATS, "Kenapa fitur-fitur itu yang dipakai?"),
                     ],
                 ),
                 panel(

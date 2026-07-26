@@ -9,32 +9,61 @@ tidak memuat credit score, cadangan dana, riwayat pembayaran, maupun kebijakan i
 
 ## A. LIMA TEMUAN UTAMA
 
-### 1. Beban utang mendominasi keputusan, tetapi jarang dinyatakan sebagai alasannya
+### 1. Beban utang mendominasi keputusan, dan alasan resmi lender menyepakatinya
 
 **Finding:**
-DTI adalah pemisah terkuat dalam seluruh proses mining, namun hanya sebagian kecil penolakan
-yang secara resmi mencantumkan debt-to-income sebagai alasan. Pola yang paling menentukan
-justru yang paling jarang dilaporkan.
+DTI adalah pemisah terkuat dalam seluruh proses mining, dan hal itu dikonfirmasi secara
+independen oleh alasan penolakan yang dicatat lender sendiri. Dua sumber bukti yang tidak
+saling bergantung menunjuk faktor yang sama.
 
 **Evidence:**
-- **Fase 3:** `debt_to_income_ratio=>60% → Denied`, confidence **91,5%**, lift **3,96**, n=4.121.
-  Ditambah `DTI>60% + Subordinate_Lien → Denied`, confidence **94,0%**, lift **4,06**, n=1.555.
-- **Fase 3 (alasan penolakan):** hanya **8,7%** penolakan mencantumkan "Debt-to-income";
-  **72,9%** masuk kategori "Other".
+- **Fase 3 (association rule):** `debt_to_income_ratio=>60% → Denied`, confidence **91,5%**,
+  lift **3,96**, n=4.121. Ditambah `DTI>60% + Subordinate_Lien → Denied`, confidence **94,0%**,
+  lift **4,06**, n=1.555.
+- **Fase 3 (alasan penolakan):** **28,2%** penolakan mencantumkan "Debt-to-income", yang
+  tertinggi dari seluruh kategori. Aturan asosiasi ditambang tanpa melihat field ini sama
+  sekali, sehingga kesepakatannya bukan hasil sirkularitas.
 - **Fase 2:** segmen *DTI-stressed borrowers* (8.731 aplikasi, 8,7% portfolio) punya tingkat
   persetujuan **39,5%**, terendah kedua setelah manufactured housing.
 
 **Why it matters:**
-Faktor yang paling kuat berasosiasi dengan penolakan hampir tidak terlihat di data alasan resmi,
-sehingga pelaporan internal bisa salah menggambarkan penyebab penolakan.
+Faktor pendorong penolakan terbesar sudah teridentifikasi jelas dan dapat diperiksa jauh
+sebelum underwriting penuh dijalankan.
 
 **Recommendation:**
-Tambahkan pemeriksaan DTI di tahap intake sebelum underwriting penuh, dan perbaiki taksonomi
-alasan penolakan agar kategori "Other" yang mencapai 72,9% dapat diuraikan.
+Terapkan pemeriksaan DTI di tahap intake, dengan rujukan alternatif bagi pemohon di atas 60%
+alih-alih meneruskan berkas ke underwriting penuh.
 
 **Confidence / caveat:**
-Ini asosiasi kuat dan konsisten lintas fase, tetapi tingginya proporsi "Other" berarti alasan
-resmi tidak dapat dipakai untuk memastikan mekanismenya.
+Kesepakatan dua sumber bukti memperkuat pola ini, tetapi tetap asosiasi historis: alasan
+penolakan dicatat setelah keputusan dibuat, sehingga tidak dapat membuktikan arah sebab-akibat.
+
+---
+
+### 1b. Faktor terbesar kedua justru tidak ada dalam data
+
+**Finding:**
+"Credit history" adalah alasan penolakan kedua terbanyak, padahal credit score sama sekali
+tidak tersedia di HMDA publik. Sebagian besar kekuatan penjelas keputusan berada di luar
+jangkauan dataset ini.
+
+**Evidence:**
+- **Fase 3 (alasan penolakan):** **25,1%** penolakan mencantumkan "Credit history", disusul
+  Collateral **14,2%** dan Other **12,2%**.
+- **Fase 1:** tidak satu pun dari 99 kolom mentah memuat credit score, cadangan dana, maupun
+  riwayat pembayaran.
+
+**Why it matters:**
+Ini menjelaskan mengapa selisih persetujuan antar kelompok tidak bisa langsung dibaca sebagai
+diskriminasi: variabel penjelas terbesar kedua memang tidak terlihat.
+
+**Recommendation:**
+Setiap analisis fair lending lanjutan wajib memakai data underwriting internal, bukan HMDA
+publik saja.
+
+**Confidence / caveat:**
+Angka ini berasal dari alasan yang dilaporkan lender, sehingga mencerminkan praktik pencatatan
+mereka dan belum tentu bobot sebenarnya dalam keputusan.
 
 ---
 
@@ -167,8 +196,8 @@ ukuran pinjaman: DTI di atas 60% berasosiasi dengan penolakan pada confidence 91
 3,96, sementara segmen jumbo dengan pinjaman terbesar justru disetujui 87,4%. Kedua, terdapat
 penalti yang melekat pada **jenis properti**: manufactured housing muncul sebagai segmen paling
 kohesif sekaligus paling ditolak, dan ketiga fase berbeda menunjuk kelompok yang sama. Ketiga,
-**alasan penolakan resmi tidak mencerminkan pola yang sebenarnya**, karena 72,9% masuk kategori
-"Other" sementara DTI hanya 8,7%. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
+**alasan resmi lender menyepakati temuan mining**, karena DTI tercatat 28,2% sebagai alasan
+terbanyak, sementara faktor terbesar kedua yaitu credit history 25,1% justru tidak ada di data. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
 dan pola kolektif tingkat kelompok justru menunjuk balik ke manufactured housing. Kelima, selisih
 persetujuan antar kelompok demografis dan geografis **bertahan setelah beban utang disamakan**,
 dan paling lebar justru pada kelompok berisiko rendah. Gabungan inilah yang tidak tampak dari
@@ -210,14 +239,14 @@ yang menuntut penyelidikan lanjutan.
 - **Kehati-hatian:** Data publik tidak memuat credit score dan cadangan dana, jadi ini sinyal
   penyelidikan, bukan kesimpulan diskriminasi.
 
-### 4. Perbaiki taksonomi alasan penolakan
+### 4. Lengkapi analisis dengan data credit history
 
-- **Aksi:** Uraikan kategori "Other" menjadi alasan yang dapat ditindaklanjuti.
-- **Bukti:** 72,9% penolakan tercatat sebagai "Other", sementara DTI yang terbukti paling kuat
-  hanya 8,7%.
-- **Nilai bisnis:** Tanpa ini, pelaporan internal tidak dapat menjelaskan penolakannya sendiri.
-- **Kehati-hatian:** Kategori "Other" sebagian ditentukan format pelaporan HMDA, sehingga tidak
-  seluruhnya dapat dikendalikan lender.
+- **Aksi:** Gabungkan data credit score internal sebelum menarik kesimpulan apa pun soal disparitas.
+- **Bukti:** Credit history adalah alasan penolakan terbanyak kedua di 25,1%, tetapi tidak ada
+  satu pun kolom HMDA yang memuatnya.
+- **Nilai bisnis:** Mencegah kesimpulan fair lending yang keliru karena variabel penjelas utama hilang.
+- **Kehati-hatian:** Selama variabel ini absen, seluruh selisih yang terlihat tetap berstatus
+  sinyal untuk diselidiki, bukan temuan final.
 
 ### 5. Jadikan deteksi anomali sebagai antrean tinjauan, bukan filter hapus
 

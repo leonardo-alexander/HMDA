@@ -105,8 +105,9 @@ check("Manufactured+Conventional confidence", man_conv["confidence"] * 100, 63.5
 check("Manufactured+Conventional lift", man_conv["lift"], 2.75, 0.02)
 
 den = load("dash_denial_reasons.csv")
-check("Alasan Other", den[den["reason"] == "Other"]["pct_of_denials"].iloc[0], 72.9, 0.1)
-check("Alasan DTI", den[den["reason"] == "Debt-to-income"]["pct_of_denials"].iloc[0], 8.7, 0.1)
+check("Alasan Other", den[den["reason"] == "Other"]["pct_of_denials"].iloc[0], 12.2, 0.1)
+check("Alasan DTI", den[den["reason"] == "Debt-to-income"]["pct_of_denials"].iloc[0], 28.2, 0.1)
+check("Alasan credit history", den[den["reason"] == "Credit history"]["pct_of_denials"].iloc[0], 25.1, 0.1)
 
 # ---------------------------------------------------------------- Phase 4
 tax = load("dash_outlier_taxonomy_summary.csv")
