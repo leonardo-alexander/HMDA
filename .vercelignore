@@ -1,0 +1,33 @@
+# Keep the Vercel serverless bundle under the 225 MB limit. The Dash app
+# (app/index.py) reads only the small dash_*.csv aggregates plus
+# data/interim/hmda_approve_deny.csv at runtime; everything below is either
+# build-time only or a fallback the app never hits when the exports exist.
+
+# Notebooks, reports, figures, raw data - not needed by the runtime
+notebooks/
+reports/
+results/
+data/raw/
+
+# Large intermediate tables the app never reads at runtime
+data/interim/hmda_clean.csv
+data/interim/hmda_denials.csv
+
+# 44.8 MB full flags table: only a fallback for dash_clarans_scatter.csv /
+# dash_scatter.csv, which are present, so this is never read.
+data/processed/p4_anomaly_flags.csv
+# Other processed CSVs the app does not read
+data/processed/dash_points.csv
+data/processed/p2_cluster_assignments.csv
+
+# Pipeline + data-build code: used by build_data.py / the notebook, not by the
+# serverless function
+pipeline/
+app/build_data.py
+app/dashboard_app.py
+
+# Backups, caches, logs
+*.bak
+*.prebak
+**/__pycache__/
+debug.log
