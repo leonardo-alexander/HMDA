@@ -3435,6 +3435,43 @@ def _load_test_panel():
                         style={
                             "fontSize": "12px",
                             "color": INK,
+                            "margin": "0 0 16px",
+                            "lineHeight": "1.6",
+                        },
+                    ),
+                    html.H4(
+                        "Pemeriksaan silang dengan tool lain (20 VU, 5 menit)",
+                        style={
+                            "fontSize": "13px",
+                            "color": NAVY,
+                            "margin": "6px 0 8px",
+                        },
+                    ),
+                    html.Img(
+                        src=app.get_asset_url("p5_load_test.png"),
+                        alt="Ringkasan uji beban 20 VU selama 5 menit: 5.579 request, "
+                        "17,78 request per detik, rata-rata 8 ms, error 0,00%.",
+                        style={
+                            "width": "100%",
+                            "maxWidth": "760px",
+                            "height": "auto",
+                            "display": "block",
+                            "borderRadius": "10px",
+                            "border": f"1px solid {BORDER}",
+                            "margin": "0 0 10px",
+                        },
+                    ),
+                    html.P(
+                        "5.579 request · 0,00% error · rata-rata 8 ms · P90 12 ms · P95 15 ms · P99 26 ms. "
+                        "Dijalankan memakai tool uji beban terpisah pada satu endpoint GET dengan laju "
+                        "tetap 17,8 req/s. Ini bukan uji kapasitas: 20 VU yang cuma menghasilkan 17,8 "
+                        "req/s berarti lajunya ditahan oleh tool, bukan oleh aplikasi, dan endpoint "
+                        "statis memang jauh lebih murah daripada callback yang membangun tab. Nilainya "
+                        "ada sebagai pemeriksaan silang dari tool berbeda: nol error dan latency tetap "
+                        "rendah selama 5 menit penuh.",
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
                             "margin": "0 0 14px",
                             "lineHeight": "1.6",
                         },

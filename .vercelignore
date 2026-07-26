@@ -3,7 +3,9 @@
 # data/interim/hmda_approve_deny.csv at runtime; everything below is either
 # build-time only or a fallback the app never hits when the exports exist.
 
-# Notebooks, reports, figures, raw data - not needed by the runtime
+# Notebooks, reports, figures, raw data - not needed by the runtime.
+# Note: results/ is excluded, so any figure the dashboard displays must live in
+# app/assets/ instead (Dash serves that folder). p5_load_test.png is copied there.
 notebooks/
 reports/
 results/
