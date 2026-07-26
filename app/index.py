@@ -646,7 +646,7 @@ def kpis():
             f"{max_lift:.1f}x" if max_lift == max_lift else "N/A",
             AMBER,
         ),
-        ("Anomali keyakinan tinggi", f"{n_anom:,}", "#7d3c98"),
+        ("Anomali confidence tinggi", f"{n_anom:,}", "#7d3c98"),
     ]
 
 
@@ -1146,7 +1146,7 @@ def fig_vote_breakdown():
         template=TEMPLATE,
         height=300,
         coloraxis_showscale=False,
-        title="Kesepakatan detektor (3+ = anomali keyakinan tinggi)",
+        title="Kesepakatan detektor (3+ = anomali confidence tinggi)",
         margin=dict(l=10, r=10, t=40, b=10),
     )
     return f
@@ -1751,7 +1751,7 @@ HEADER_LINK_STYLE = {
 }
 
 
-def why(items, title="Mengapa metode ini dipilih? (klik untuk membuka)"):
+def why(items, title="Justifikasi"):
     """Collapsible methodology justification: a list of (question, answer) pairs.
 
     Rendered as a native <details> block so every analytical choice carries its
@@ -2407,9 +2407,6 @@ def combined_match(selected: list[tuple[str, str, str]]):
     filters = tuple((field, str(value)) for field, _, value in selected if value)
     rate, n = _combined_match_cached(filters)
     return rate, n, active
-
-
-def data_health_banner():
     """Compact, visible status so missing exports never fail silently."""
     if not DATA_LOAD_ISSUES:
         return html.Div(
@@ -2478,7 +2475,7 @@ def build_discovery() -> str:
         )
     statement = (
         f"Pola penolakan terkuat adalah {denial_rule.get('if_readable', denial_rule.get('antecedent', 'aturan teratas'))}: "
-        f"keyakinan {float(denial_rule.get('confidence', 0)) * 100:.1f}%, "
+        f"confidence {float(denial_rule.get('confidence', 0)) * 100:.1f}%, "
         f"lift {float(denial_rule.get('lift', 0)):.2f}×, mencakup {int(denial_rule.get('n_matched', 0)):,} aplikasi."
     )
     if np.isfinite(gap):
@@ -2664,14 +2661,14 @@ app.layout = html.Div(
                 html.Div(
                     [
                         html.A(
-                            "Kode sumber (GitHub)",
+                            "Source Code",
                             href="https://github.com/leonardo-alexander/HMDA",
                             target="_blank",
                             rel="noopener noreferrer",
                             style=HEADER_LINK_STYLE,
                         ),
                         html.A(
-                            "Sumber dataset (FFIEC / CFPB)",
+                            "Source Dataset",
                             href="https://ffiec.cfpb.gov/data-publication/snapshot-national-loan-level-dataset/2022",
                             target="_blank",
                             rel="noopener noreferrer",
@@ -2720,7 +2717,6 @@ app.layout = html.Div(
                 "boxShadow": "0 2px 14px rgba(16,42,74,0.05)",
             },
         ),
-        data_health_banner(),
         html.Div(
             [kpi_card(l, v, c) for l, v, c in kpis()],
             style={
@@ -3141,57 +3137,75 @@ WHY_LOADTEST = [
 
 
 WHY_FUNNEL = [
-    ("Kenapa 30 kolom demografi mentah tidak dipakai?",
-     "HMDA memecah ras dan etnis jadi lima kolom terpisah untuk pemohon dan lima lagi untuk "
-     "co-applicant, plus kolom penanda cara pengamatannya. Semua itu sudah diringkas HMDA "
-     "sendiri jadi derived_race, derived_ethnicity, dan derived_sex, yang justru dipakai di "
-     "tab Keadilan. Memakai versi mentahnya cuma menduplikasi informasi yang sama dalam "
-     "puluhan kolom."),
-    ("Kenapa hasil AUS dan alasan penolakan dibuang?",
-     "Keduanya baru ada setelah keputusan dibuat. AUS itu keluaran sistem underwriting "
-     "otomatis, dan denial_reason cuma terisi pada aplikasi yang memang ditolak. Kalau "
-     "denial_reason ikut dipakai untuk memprediksi penolakan, akurasinya bisa mendekati "
-     "sempurna tapi sama sekali tidak berguna, karena kolomnya kosong saat aplikasi baru masuk."),
-    ("Kenapa harga dan biaya dianggap leakage?",
-     "Interest rate, total loan costs, origination charges, dan rate spread baru ditentukan "
-     "ketika loan disetujui. Nilainya justru hasil dari keputusan yang sedang kita pelajari, "
-     "bukan penyebabnya. Ikut memasukkannya berarti menjelaskan keputusan dengan keputusan itu "
-     "sendiri."),
-    ("Kenapa jumlahnya tidak bisa dikurangi berurutan?",
-     "Karena ada kolom yang masuk dua kategori sekaligus. total_points_and_fees, "
-     "discount_points, dan lender_credits itu leakage sekaligus lebih dari 60% kosong, jadi "
-     "kalau angkanya dikurangi berantai, ketiganya terhitung dua kali. Itu sebabnya tabel di "
-     "atas menyajikan alasan per kategori, bukan sebagai pengurangan bertahap."),
-    ("Setelah disaring, bagaimana sisanya dinilai?",
-     "31 fitur yang lolos diberi skor gabungan dari korelasi dan mutual information terhadap "
-     "Originated vs Denied, lalu dikelompokkan jadi kandidat kuat, sedang, dan lemah. Yang "
-     "lemah tidak langsung dibuang, tetap dilaporkan supaya keputusannya bisa ditelusuri."),
+    (
+        "Kenapa 30 kolom demografi mentah tidak dipakai?",
+        "HMDA memecah ras dan etnis jadi lima kolom terpisah untuk pemohon dan lima lagi untuk "
+        "co-applicant, plus kolom penanda cara pengamatannya. Semua itu sudah diringkas HMDA "
+        "sendiri jadi derived_race, derived_ethnicity, dan derived_sex, yang justru dipakai di "
+        "tab Keadilan. Memakai versi mentahnya cuma menduplikasi informasi yang sama dalam "
+        "puluhan kolom.",
+    ),
+    (
+        "Kenapa hasil AUS dan alasan penolakan dibuang?",
+        "Keduanya baru ada setelah keputusan dibuat. AUS itu keluaran sistem underwriting "
+        "otomatis, dan denial_reason cuma terisi pada aplikasi yang memang ditolak. Kalau "
+        "denial_reason ikut dipakai untuk memprediksi penolakan, akurasinya bisa mendekati "
+        "sempurna tapi sama sekali tidak berguna, karena kolomnya kosong saat aplikasi baru masuk.",
+    ),
+    (
+        "Kenapa harga dan biaya dianggap leakage?",
+        "Interest rate, total loan costs, origination charges, dan rate spread baru ditentukan "
+        "ketika loan disetujui. Nilainya justru hasil dari keputusan yang sedang kita pelajari, "
+        "bukan penyebabnya. Ikut memasukkannya berarti menjelaskan keputusan dengan keputusan itu "
+        "sendiri.",
+    ),
+    (
+        "Kenapa jumlahnya tidak bisa dikurangi berurutan?",
+        "Karena ada kolom yang masuk dua kategori sekaligus. total_points_and_fees, "
+        "discount_points, dan lender_credits itu leakage sekaligus lebih dari 60% kosong, jadi "
+        "kalau angkanya dikurangi berantai, ketiganya terhitung dua kali. Itu sebabnya tabel di "
+        "atas menyajikan alasan per kategori, bukan sebagai pengurangan bertahap.",
+    ),
+    (
+        "Setelah disaring, bagaimana sisanya dinilai?",
+        "31 fitur yang lolos diberi skor gabungan dari korelasi dan mutual information terhadap "
+        "Originated vs Denied, lalu dikelompokkan jadi kandidat kuat, sedang, dan lemah. Yang "
+        "lemah tidak langsung dibuang, tetap dilaporkan supaya keputusannya bisa ditelusuri.",
+    ),
 ]
 
 
 WHY_VIF = [
-    ("Kenapa perlu VIF kalau sudah ada cek korelasi berpasangan?",
-     "Karena korelasi berpasangan cuma melihat dua fitur sekaligus, jadi buta terhadap "
-     "redundansi yang baru muncul saat beberapa fitur digabung. Sebuah fitur bisa punya "
-     "korelasi rendah terhadap setiap fitur lain satu per satu, tapi tetap bisa diprediksi "
-     "hampir sempurna dari kombinasi tiga fitur lainnya. VIF menangkap kasus itu."),
-    ("Kenapa ambangnya 10?",
-     "Karena VIF = 1 / (1 - R kuadrat), jadi VIF di atas 10 persis sama artinya dengan R "
-     "kuadrat di atas 0,90. Itu ambang yang sama dengan cek berpasangan, cuma diterapkan di "
-     "dimensi yang benar. Hasilnya konsisten: nol fitur melewati ambang, sejalan dengan nol "
-     "pasangan pada cek berpasangan."),
-    ("Kenapa DTI diuji terpisah?",
-     "Karena DTI sudah diubah jadi band, sehingga tidak ikut masuk ruang fitur numerik dan "
-     "tidak muncul di tabel VIF. Padahal justru DTI yang paling dicurigai tumpang tindih "
-     "dengan income dan besar loan. Uji terarah ini memetakan band DTI ke titik tengahnya, "
-     "lalu mencoba merekonstruksinya dari income, besar loan, nilai properti, dan rasio "
-     "loan terhadap income."),
-    ("Apa hasilnya, dan apa konsekuensinya?",
-     "R kuadrat cuma 0,100, setara VIF 1,11. Artinya 90% variasi DTI tidak bisa dijelaskan "
-     "oleh fitur ukuran, jadi DTI membawa informasi yang benar-benar berbeda dan keduanya "
-     "layak dipertahankan. Sisa variasi itu masuk akal secara struktural: utang non-hipotek "
-     "tidak terekam di HMDA, besar cicilan bergantung pada bunga dan tenor, dan DTI cuma "
-     "dilaporkan sebagai tujuh tingkat ordinal."),
+    (
+        "Kenapa perlu VIF kalau sudah ada cek korelasi berpasangan?",
+        "Karena korelasi berpasangan cuma melihat dua fitur sekaligus, jadi buta terhadap "
+        "redundansi yang baru muncul saat beberapa fitur digabung. Sebuah fitur bisa punya "
+        "korelasi rendah terhadap setiap fitur lain satu per satu, tapi tetap bisa diprediksi "
+        "hampir sempurna dari kombinasi tiga fitur lainnya. VIF menangkap kasus itu.",
+    ),
+    (
+        "Kenapa ambangnya 10?",
+        "Karena VIF = 1 / (1 - R kuadrat), jadi VIF di atas 10 persis sama artinya dengan R "
+        "kuadrat di atas 0,90. Itu ambang yang sama dengan cek berpasangan, cuma diterapkan di "
+        "dimensi yang benar. Hasilnya konsisten: nol fitur melewati ambang, sejalan dengan nol "
+        "pasangan pada cek berpasangan.",
+    ),
+    (
+        "Kenapa DTI diuji terpisah?",
+        "Karena DTI sudah diubah jadi band, sehingga tidak ikut masuk ruang fitur numerik dan "
+        "tidak muncul di tabel VIF. Padahal justru DTI yang paling dicurigai tumpang tindih "
+        "dengan income dan besar loan. Uji terarah ini memetakan band DTI ke titik tengahnya, "
+        "lalu mencoba merekonstruksinya dari income, besar loan, nilai properti, dan rasio "
+        "loan terhadap income.",
+    ),
+    (
+        "Apa hasilnya, dan apa konsekuensinya?",
+        "R kuadrat cuma 0,100, setara VIF 1,11. Artinya 90% variasi DTI tidak bisa dijelaskan "
+        "oleh fitur ukuran, jadi DTI membawa informasi yang benar-benar berbeda dan keduanya "
+        "layak dipertahankan. Sisa variasi itu masuk akal secara struktural: utang non-hipotek "
+        "tidak terekam di HMDA, besar cicilan bergantung pada bunga dan tenor, dan DTI cuma "
+        "dilaporkan sebagai tujuh tingkat ordinal.",
+    ),
 ]
 
 
@@ -3199,20 +3213,26 @@ def _vif_panel():
     """Multicollinearity audit added in the notebook revision: VIF plus a targeted
     test of whether DTI is just a restatement of the size features."""
     vif_rows = [
-        ("tract_owner_occupied_units", 6.00), ("tract_one_to_four_family_homes", 4.05),
-        ("tract_population", 3.58), ("any_exempt_field", 2.95),
-        ("property_value_was_missing", 2.61), ("loan_term_was_missing", 2.29),
+        ("tract_owner_occupied_units", 6.00),
+        ("tract_one_to_four_family_homes", 4.05),
+        ("tract_population", 3.58),
+        ("any_exempt_field", 2.95),
+        ("property_value_was_missing", 2.61),
+        ("loan_term_was_missing", 2.29),
         ("combined_loan_to_value_ratio_was_missing", 2.00),
-        ("tract_minority_population_percent", 1.51), ("loan_amount", 1.30),
+        ("tract_minority_population_percent", 1.51),
+        ("loan_amount", 1.30),
         ("property_value", 1.27),
     ]
     vif_df = pd.DataFrame([{"Fitur": f, "VIF": v} for f, v in vif_rows])
-    dti_df = pd.DataFrame([
-        {"Prediktor": "loan_to_income", "Spearman terhadap DTI": "+0,373"},
-        {"Prediktor": "log_income", "Spearman terhadap DTI": "-0,330"},
-        {"Prediktor": "log_loan_amount", "Spearman terhadap DTI": "+0,057"},
-        {"Prediktor": "log_property_value", "Spearman terhadap DTI": "+0,007"},
-    ])
+    dti_df = pd.DataFrame(
+        [
+            {"Prediktor": "loan_to_income", "Spearman terhadap DTI": "+0,373"},
+            {"Prediktor": "log_income", "Spearman terhadap DTI": "-0,330"},
+            {"Prediktor": "log_loan_amount", "Spearman terhadap DTI": "+0,057"},
+            {"Prediktor": "log_property_value", "Spearman terhadap DTI": "+0,007"},
+        ]
+    )
     return panel(
         "Audit multikolinearitas: VIF dan uji rekonstruksi DTI",
         [
@@ -3223,19 +3243,29 @@ def _vif_panel():
                     _stat_tile("Di atas ambang 10", "0", GREEN),
                     _stat_tile("R² rekonstruksi DTI", "0,100", GREEN),
                 ],
-                style={"display": "flex", "gap": "14px", "flexWrap": "wrap",
-                       "marginBottom": "16px"},
+                style={
+                    "display": "flex",
+                    "gap": "14px",
+                    "flexWrap": "wrap",
+                    "marginBottom": "16px",
+                },
             ),
-            html.H4("VIF per fitur (10 tertinggi)",
-                    style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+            html.H4(
+                "VIF per fitur (10 tertinggi)",
+                style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"},
+            ),
             _table(vif_df),
-            html.H4("Bisakah DTI direkonstruksi dari fitur ukuran?",
-                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            html.H4(
+                "Bisakah DTI direkonstruksi dari fitur ukuran?",
+                style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"},
+            ),
             _table(dti_df),
             html.Div(
                 [
-                    html.B("Kesimpulan: DTI tidak bisa direkonstruksi. ",
-                           style={"fontSize": "12px", "color": NAVY}),
+                    html.B(
+                        "Kesimpulan: DTI tidak bisa direkonstruksi. ",
+                        style={"fontSize": "12px", "color": NAVY},
+                    ),
                     html.Span(
                         "R² = 0,100 setara VIF 1,11, jadi 90% variasi DTI tidak dijelaskan "
                         "oleh income, besar loan, maupun nilai properti. DTI dan fitur ukuran "
@@ -3243,8 +3273,13 @@ def _vif_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={"background": "#eefaf1", "border": "1px solid #b7e4c7",
-                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+                style={
+                    "background": "#eefaf1",
+                    "border": "1px solid #b7e4c7",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "margin": "14px 0",
+                },
             ),
             why(WHY_VIF),
         ],
@@ -3257,12 +3292,36 @@ def _feature_funnel_panel():
     """Explains how 99 raw HMDA columns become the analysis feature set."""
     rows = [
         ("Kolom mentah HMDA", 99, "Titik awal sebelum penyaringan apa pun"),
-        ("Pengenal", 5, "lei, census_tract, county_code, dan sejenisnya. Penanda baris, bukan sifat pemohon"),
-        ("Demografi mentah", 30, "Sudah diringkas HMDA jadi derived_race, derived_ethnicity, derived_sex"),
-        ("Hasil AUS", 5, "Keluaran sistem underwriting otomatis, muncul setelah keputusan"),
-        ("Alasan penolakan", 4, "Cuma terisi pada aplikasi yang ditolak, jadi membocorkan jawabannya"),
-        ("Lebih dari 60% kosong", 6, "Missingness struktural, tidak bisa diimputasi tanpa mengarang"),
-        ("Harga dan biaya (leakage)", 13, "Interest rate, total loan costs, dan sejenisnya, ditentukan setelah persetujuan"),
+        (
+            "Pengenal",
+            5,
+            "lei, census_tract, county_code, dan sejenisnya. Penanda baris, bukan sifat pemohon",
+        ),
+        (
+            "Demografi mentah",
+            30,
+            "Sudah diringkas HMDA jadi derived_race, derived_ethnicity, derived_sex",
+        ),
+        (
+            "Hasil AUS",
+            5,
+            "Keluaran sistem underwriting otomatis, muncul setelah keputusan",
+        ),
+        (
+            "Alasan penolakan",
+            4,
+            "Cuma terisi pada aplikasi yang ditolak, jadi membocorkan jawabannya",
+        ),
+        (
+            "Lebih dari 60% kosong",
+            6,
+            "Missingness struktural, tidak bisa diimputasi tanpa mengarang",
+        ),
+        (
+            "Harga dan biaya (leakage)",
+            13,
+            "Interest rate, total loan costs, dan sejenisnya, ditentukan setelah persetujuan",
+        ),
         ("Fitur yang diskor", 31, "Dinilai dengan korelasi dan mutual information"),
     ]
     df = pd.DataFrame(
@@ -3404,7 +3463,7 @@ def _load_test_panel():
                     "marginBottom": "14px",
                 },
             ),
-            why(WHY_LOADTEST, "Mengapa diuji seperti ini, dan apa artinya? (klik)"),
+            why(WHY_LOADTEST, "Justifikasi"),
         ],
         sub="Diukur 26 Juli 2026 · Flask development server · Python 3.14 · satu instance",
     )
@@ -4152,7 +4211,7 @@ def render(tab):
                     [
                         html.P(
                             f"Empat detektor (IQR, Z-score, Isolation Forest, LOF) ditambah DBSCAN-noise saling "
-                            f"memberi suara pada tiap aplikasi; {n_hc:,} adalah anomali keyakinan tinggi (3+ metode "
+                            f"memberi suara pada tiap aplikasi; {n_hc:,} adalah anomali confidence tinggi (3+ metode "
                             f"sepakat). 15 yang paling ekstrem ditriase manual menjadi verdict beserta bukti, bukan "
                             f'sekadar ditandai "aneh".',
                             style={
@@ -4317,7 +4376,7 @@ def render(tab):
                                         ),
                                         html.Div(
                                             "Ditandai oleh setidaknya satu metode global DAN satu kontekstual/lokal - "
-                                            "anomali dengan keyakinan tertinggi, dan tepat kumpulan tempat hand-triage "
+                                            "anomali dengan confidence tertinggi, dan tepat kumpulan tempat hand-triage "
                                             "top-15 (di bawah) diambil.",
                                             style={
                                                 "fontSize": "11.5px",
@@ -4459,8 +4518,9 @@ def render(tab):
             )
             for field, label, kind, order, default in WHATIF_FIELDS
         ] + [
-            render_control(field, label, kind, order, default, "ctx",
-                           wrap_id=FIN_WRAP.get(field))
+            render_control(
+                field, label, kind, order, default, "ctx", wrap_id=FIN_WRAP.get(field)
+            )
             for field, label, kind, order, default in CONTEXT_FIELDS
         ]
         return html.Div(
@@ -4477,7 +4537,10 @@ def render(tab):
                                     "label": " Pakai income + besar loan + durasi",
                                     "value": "income_loan",
                                 },
-                                {"label": " Semua (sampel bisa jadi kecil)", "value": "all"},
+                                {
+                                    "label": " Semua (sampel bisa jadi kecil)",
+                                    "value": "all",
+                                },
                             ],
                             inline=True,
                             style={"fontSize": "12px"},
@@ -4793,8 +4856,7 @@ def _cb_fin_mode(mode):
     shown = dict(CONTROL_WRAP_STYLE)
     hidden = {"display": "none"}
     if mode == "all":
-        return (shown, shown, shown, shown,
-                no_update, no_update, no_update, no_update)
+        return (shown, shown, shown, shown, no_update, no_update, no_update, no_update)
     if mode == "income_loan":
         return hidden, shown, shown, shown, "", no_update, no_update, no_update
     return shown, hidden, hidden, hidden, no_update, "", "", ""
@@ -4856,6 +4918,7 @@ def _cb_whatif(*values):
                 ),
             ]
         )
+
     return panel(
         "Hasil",
         [

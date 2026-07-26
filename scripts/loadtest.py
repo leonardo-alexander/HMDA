@@ -25,6 +25,7 @@ Note: app/index.py serves through the Flask development server, which is not
 what Vercel runs. Treat the results as a relative profile between tabs, not as
 production capacity.
 """
+
 import json
 import statistics
 import sys
@@ -88,11 +89,15 @@ def report(name, results, wall):
     err = len(results) - ok
     kb = statistics.mean([r[2] for r in results if r[2]] or [0]) / 1024
     print(f"\n{name}")
-    print(f"  requests {len(results)}  ok {ok}  errors {err}  "
-          f"wall {wall:.2f}s  throughput {len(results)/wall:.1f} req/s")
-    print(f"  latency ms: min {min(lat):.0f}  p50 {pct(lat,50):.0f}  "
-          f"p95 {pct(lat,95):.0f}  p99 {pct(lat,99):.0f}  max {max(lat):.0f}  "
-          f"mean {statistics.mean(lat):.0f}")
+    print(
+        f"  requests {len(results)}  ok {ok}  errors {err}  "
+        f"wall {wall:.2f}s  throughput {len(results)/wall:.1f} req/s"
+    )
+    print(
+        f"  latency ms: min {min(lat):.0f}  p50 {pct(lat,50):.0f}  "
+        f"p95 {pct(lat,95):.0f}  p99 {pct(lat,99):.0f}  max {max(lat):.0f}  "
+        f"mean {statistics.mean(lat):.0f}"
+    )
     if kb:
         print(f"  avg payload {kb:.0f} KB")
     return ok, err
