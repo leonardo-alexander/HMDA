@@ -491,6 +491,21 @@ if scatter is None:
 
 
 # SELF-LABELLING
+# Indonesian display labels for the notebook's English segment_name values. Only the
+# shown label is translated; SEGMENT_BLURB / CLUSTER_RECS stay keyed on the raw English
+# segment_name (which is what the data carries), so their lookups are unaffected.
+SEGMENT_LABEL_ID = {
+    "Refinancers (rate & cash-out)": "Refinancer (rate & cash-out)",
+    "Property investors": "Investor properti",
+    "Mainstream prime purchasers": "Pembeli prime mainstream",
+    "Manufactured-housing applicants": "Pemohon manufactured-housing",
+    "DTI-stressed borrowers": "Peminjam DTI tinggi",
+    "Jumbo / high-net-worth buyers": "Pembeli jumbo / high-net-worth",
+    "Small-loan borrowers": "Peminjam loan kecil",
+    "Unlabelled segment": "Segmen tanpa label",
+}
+
+
 def name_clusters(p):
     """Use the notebook's own business naming (segment_name in p2_cluster_profiles.csv)
     instead of a second, separate heuristic. A simpler local rule that only checks
@@ -505,6 +520,7 @@ def name_clusters(p):
     for _, row in p.dropna(subset=["kmeans_cluster"]).iterrows():
         cluster_id = int(row["kmeans_cluster"])
         segment_name = str(row.get("segment_name", "Unlabelled segment"))
+        segment_name = SEGMENT_LABEL_ID.get(segment_name, segment_name)
         labels[cluster_id] = f"C{cluster_id} - {segment_name}"
     return labels
 
