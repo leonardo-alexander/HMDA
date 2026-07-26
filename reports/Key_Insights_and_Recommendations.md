@@ -47,7 +47,7 @@ jalur pembiayaan, bukan semata pada income pemohon.
 
 **Evidence:**
 - **Fase 2:** segmen *Manufactured-housing applicants* (4.529 aplikasi) hanya **43,1%** disetujui,
-  sementara portfolio **77,0%**.
+  sementara portfolio **76,9%**.
 - **Fase 2 (validitas):** segmen ini paling kohesif dari tujuh segmen, silhouette **0,495**,
   dengan Ward purity **1,000** dan CLARANS purity **1,000** — ketiga algoritma menemukan
   kelompok yang sama.
@@ -101,31 +101,32 @@ loan-to-value pemohon tidak tersedia sehingga faktor perancu tidak dapat dikesam
 
 ---
 
-### 4. Nilai ekstrem dalam data ini sah, dan pola kolektif yang ditemukan adalah artefak pelaporan
+### 4. Nilai ekstrem dalam data ini terbukti sah, bukan kesalahan data
 
 **Finding:**
-Tidak satu pun rekaman paling ekstrem terbukti sebagai kesalahan data. Sementara itu, pola
-tingkat kelompok yang paling mencolok justru berasal dari aturan pelaporan HMDA, bukan dari
-perilaku pinjaman.
+Tidak satu pun rekaman paling ekstrem terbukti sebagai kesalahan data. Kedua filosofi deteksi
+juga terbukti menangkap kelompok rekaman yang berbeda, sehingga memakai satu pendekatan saja
+akan melewatkan seluruh kelas anomali yang lain.
 
 **Evidence:**
 - **Fase 4:** dari lima detektor, **739** aplikasi memperoleh minimal tiga suara. 15 rekaman
   paling ekstrem ditriase manual dan **seluruhnya** berakhir **RARE BUT VALID**, nol kesalahan data.
 - **Fase 4 (taksonomi):** **9.959** outlier global (10,0%), **589** kontekstual/lokal (0,6%),
-  dan hanya **476** tertangkap keduanya — dua filosofi deteksi menangkap rekaman yang berbeda.
-- **Fase 4 (kolektif):** seluruh **2.413** loan bernilai ≥ $1 juta berakhiran "...5.000", yaitu
-  **100%**, konsekuensi aturan pembulatan pelaporan HMDA.
+  dan hanya **476** tertangkap keduanya, menunjukkan kedua pendekatan tidak saling menggantikan.
+- **Fase 4 (kolektif tingkat grup):** dari 4 kelompok non-geografis yang ditandai Isolation
+  Forest, **3 di antaranya manufactured housing**, memperkuat temuan nomor 2 lewat jalur
+  bukti yang berbeda.
 
 **Why it matters:**
 Memakai ensemble anomali sebagai aturan hapus otomatis akan membuang aplikasi jumbo yang sah.
 
 **Recommendation:**
-Perlakukan keluaran deteksi anomali sebagai antrean tinjauan manual, bukan filter penghapusan,
-dan kecualikan pola pembulatan dari pemantauan risiko.
+Perlakukan keluaran deteksi anomali sebagai antrean tinjauan manual, bukan filter penghapusan.
 
 **Confidence / caveat:**
 Triase manual baru mencakup 15 rekaman teratas, sehingga tidak menjamin seluruh 739 anomali
-berkeyakinan tinggi juga sah.
+berkeyakinan tinggi juga sah. Sisa **29** kelompok kolektif yang ditandai berbasis negara bagian
+dan **52%** di antaranya yurisdiksi kecil, sehingga sengaja tidak diklaim sebagai temuan.
 
 ---
 
@@ -168,7 +169,7 @@ penalti yang melekat pada **jenis properti**: manufactured housing muncul sebaga
 kohesif sekaligus paling ditolak, dan ketiga fase berbeda menunjuk kelompok yang sama. Ketiga,
 **alasan penolakan resmi tidak mencerminkan pola yang sebenarnya**, karena 72,9% masuk kategori
 "Other" sementara DTI hanya 8,7%. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
-satu-satunya pola kolektif yang benar-benar universal justru artefak pelaporan. Kelima, selisih
+dan pola kolektif tingkat kelompok justru menunjuk balik ke manufactured housing. Kelima, selisih
 persetujuan antar kelompok demografis dan geografis **bertahan setelah beban utang disamakan**,
 dan paling lebar justru pada kelompok berisiko rendah. Gabungan inilah yang tidak tampak dari
 data mentah: struktur keputusan, penalti produk, keterbatasan pelaporan, dan disparitas residual

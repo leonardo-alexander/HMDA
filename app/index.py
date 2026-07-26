@@ -2264,7 +2264,15 @@ WHATIF_FIELDS = [
 
 
 def compute_base_approval() -> float:
-    """Return the best available decisioned-application approval rate."""
+    """Return the best available decisioned-application approval rate.
+
+    Prefers the full decisioned population over the 8,000-row scatter sample: the What-If
+    delta compares a filtered rate against this baseline, so a sample-derived baseline
+    would shift every comparison by the sampling error (76.98% vs the true 76.88%).
+    """
+    full = numeric_series(appdeny_full, "target_approved").dropna()
+    if len(full):
+        return float(full.mean() * 100)
     approved = numeric_series(scatter, "_approved").dropna()
     if len(approved):
         return float(approved.mean() * 100)
@@ -3368,40 +3376,29 @@ def _vif_panel():
 
 
 WHY_COLLECTIVE_GROUPS = [
-    (
-        "Kenapa perlu deteksi tingkat grup?",
-        "Karena kelima detektor sebelumnya menilai baris satu per satu, jadi secara desain "
-        "buta terhadap pola yang cuma ada di tingkat kelompok. Sebuah grup bisa punya "
-        "tanda-tanda aneh sebagai kesatuan padahal tidak ada satu pun anggotanya yang "
-        "mencurigakan kalau dilihat sendirian.",
-    ),
-    (
-        "Bagaimana cara kerjanya?",
-        "Baris dikelompokkan menurut kombinasi bisnis seperti negara bagian dikali tujuan "
-        "loan, lalu tiap grup diringkas jadi median dan IQR dari fitur anomali. Isolation "
-        "Forest kemudian dijalankan pada profil grup itu, bukan pada barisnya. Grup dengan "
-        "anggota kurang dari 50 dibuang supaya ringkasannya tidak lahir dari segelintir baris.",
-    ),
-    (
-        "Apa itu pure collective candidate?",
-        "Grup yang ditandai anomali padahal kurang dari 25% anggotanya pernah ditandai "
-        "detektor individual. Inilah kasus yang paling menarik, karena keanehannya benar-benar "
-        "muncul di tingkat kelompok dan tidak akan pernah tertangkap oleh deteksi per baris. "
-        "Dari 33 grup yang ditandai, 21 di antaranya masuk kategori ini.",
-    ),
-    (
-        "Kenapa field hasil keputusan tidak dipakai?",
-        "Supaya ini tetap penemuan struktural, bukan model yang memprediksi persetujuan. "
-        "Kalau action_taken atau alasan penolakan ikut masuk, yang ditemukan cuma cerminan "
-        "keputusan yang sudah diambil, bukan pola pembangkitan datanya.",
-    ),
-    (
-        "Apakah anggotanya otomatis dianggap anomali?",
-        "Tidak. Menjadi anggota grup yang ditandai bukan berarti loan itu bermasalah. "
-        "19.393 baris berada di setidaknya satu grup anomali, dan itu 19% dari data, jauh "
-        "terlalu banyak untuk diperlakukan sebagai temuan per baris. Flag ini menunjuk "
-        "kelompoknya untuk ditelaah, bukan menuduh anggotanya.",
-    ),
+    ("Kenapa perlu deteksi tingkat grup?",
+     "Karena kelima detektor sebelumnya menilai baris satu per satu, jadi secara desain buta "
+     "terhadap pola yang cuma ada di tingkat kelompok. Sebuah kelompok bisa punya tanda-tanda "
+     "aneh sebagai kesatuan padahal tiap anggotanya wajar kalau dilihat sendirian."),
+    ("Bagaimana cara kerjanya?",
+     "Baris dikelompokkan menurut kombinasi bisnis, lalu tiap kelompok diringkas jadi median "
+     "dan IQR dari fitur anomali. Isolation Forest dijalankan pada profil kelompok itu, bukan "
+     "pada barisnya. Kelompok dengan anggota kurang dari 50 dibuang supaya ringkasannya tidak "
+     "lahir dari segelintir baris."),
+    ("Kenapa sebagian besar hasilnya tidak dianggap temuan?",
+     "Karena dari 29 kelompok berbasis negara bagian yang ditandai, 15 di antaranya atau 52% "
+     "adalah yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, atau kategori state yang "
+     "tidak diketahui. Kelompok kecil memang gampang terlihat menyimpang secara statistik, dan "
+     "itu variasi geografis biasa, bukan anomali yang perlu ditindaklanjuti. Menyebutnya temuan "
+     "akan mengada-ada."),
+    ("Apa itu pure collective candidate?",
+     "Kelompok yang ditandai anomali padahal kurang dari 25% anggotanya pernah ditandai detektor "
+     "individual. Inilah kasus yang paling berarti, karena keanehannya benar-benar muncul di "
+     "tingkat kelompok dan tidak akan tertangkap deteksi per baris."),
+    ("Kenapa field hasil keputusan tidak dipakai?",
+     "Supaya ini tetap penemuan struktural, bukan model yang memprediksi persetujuan. Kalau "
+     "action_taken atau alasan penolakan ikut masuk, yang ditemukan cuma cerminan keputusan yang "
+     "sudah diambil."),
 ]
 
 
@@ -3726,62 +3723,82 @@ def _key_takeaways_panel():
 
 
 def _collective_groups_panel():
-    """Group-level collective anomalies, the class the five record-level detectors miss."""
+    """Group-level collective anomalies.
+
+    Reported narrowly on purpose. Half the state-based hits are small jurisdictions, which is
+    ordinary geographic variation rather than a finding, so the panel leads with the one
+    pattern that is corroborated by other phases instead of presenting all 33 as discoveries.
+    """
     if collective_groups is None or not len(collective_groups):
         return html.Div()
 
-    tiles = []
-    if collective_summary is not None and len(collective_summary):
-        s = collective_summary.iloc[0]
-        tiles = html.Div(
-            [
-                _stat_tile("Skema pengelompokan", f"{int(s['grouping_schemes'])}"),
-                _stat_tile("Grup ditandai", f"{int(s['flagged_groups'])}", AMBER),
-                _stat_tile(
-                    "Pure collective", f"{int(s['pure_collective_groups'])}", RED
-                ),
-                _stat_tile("Baris anggota", f"{int(s['unique_member_rows']):,}", STEEL),
-                _stat_tile("Porsi data", f"{float(s['pct_member_rows']):.1f}%", MUTE),
-            ],
-            style={
-                "display": "flex",
-                "gap": "14px",
-                "flexWrap": "wrap",
-                "marginBottom": "16px",
-            },
-        )
-
-    d = collective_groups.head(12).copy()
-    tbl = pd.DataFrame(
-        {
-            "Skema": d["group_spec"],
-            "Grup": d["group_values"],
-            "Anggota": d["n"].map(lambda v: f"{int(v):,}"),
-            "Skor": d["collective_iso_score"].map(lambda v: f"{v:.3f}"),
-            "Anggota ditandai individual": d["member_individual_flag_rate"].map(
-                lambda v: f"{v*100:.0f}%"
-            ),
-            "Pure collective": d["pure_collective_candidate"].map(
-                lambda v: "Ya" if bool(v) else "-"
-            ),
-        }
-    )
+    d = collective_groups.copy()
+    non_state = d[~d["group_spec"].str.startswith("state_")]
+    tbl = pd.DataFrame({
+        "Kelompok": non_state["group_values"],
+        "Skema": non_state["group_spec"],
+        "Anggota": non_state["n"].map(lambda v: f"{int(v):,}"),
+        "Skor": non_state["collective_iso_score"].map(lambda v: f"{v:.3f}"),
+        "Anggota ditandai individual": non_state["member_individual_flag_rate"].map(
+            lambda v: f"{v*100:.0f}%"),
+    })
 
     return panel(
         "Anomali kolektif tingkat grup",
         [
-            html.P(
-                "Isolation Forest dijalankan pada profil grup, bukan pada baris. Ini "
-                "menangkap kelas anomali yang tidak bisa dilihat kelima detektor "
-                "sebelumnya, karena semuanya menilai baris satu per satu.",
-                style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+            html.Div(
+                [
+                    html.B("Temuan: manufactured housing muncul lagi sebagai pola kolektif. ",
+                           style={"fontSize": "12.5px", "color": NAVY}),
+                    html.Span(
+                        "Dari 4 kelompok yang ditandai di luar skema geografis, 3 di antaranya "
+                        "adalah manufactured housing. Ini konfirmasi independen atas segmen yang "
+                        "sama, yang di Fase 2 juga paling kohesif dengan silhouette 0,495 dan "
+                        "purity 1,000, serta memperoleh skor bukti 4 dari 4 pada audit kolektif "
+                        "K-Means dengan hanya 8,7% anggotanya pernah ditandai detektor individual. "
+                        "Artinya keanehannya benar-benar ada di tingkat kelompok, bukan pada "
+                        "loan-nya satu per satu.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": "#eefaf1", "border": "1px solid #b7e4c7",
+                       "borderRadius": "10px", "padding": "12px 14px", "marginBottom": "14px"},
             ),
-            tiles,
             _table(tbl),
+            html.Div(
+                [
+                    html.B("Yang sengaja tidak diklaim sebagai temuan. ",
+                           style={"fontSize": "12px", "color": NAVY}),
+                    html.Span(
+                        "29 kelompok lain berbasis negara bagian, dan 15 di antaranya atau 52% "
+                        "adalah yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, atau state "
+                        "yang tidak diketahui. Kelompok berukuran kecil memang mudah terlihat "
+                        "menyimpang, jadi itu variasi geografis biasa dan tidak dilaporkan sebagai "
+                        "penemuan.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
+                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+            ),
+            html.Div(
+                [
+                    html.B("Insight bisnis: ", style={"fontSize": "12px", "color": NAVY}),
+                    html.Span(
+                        "manufactured housing perlu jalur produk sendiri, bukan pengetatan "
+                        "underwriting. Polanya konsisten di tingkat segmen maupun kelompok, dan "
+                        "mayoritas anggotanya normal secara individual, jadi masalahnya ada pada "
+                        "kecocokan produk, bukan pada kualitas masing-masing pemohon.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": BG, "borderRadius": "10px", "padding": "12px 14px",
+                       "marginBottom": "14px"},
+            ),
             why(WHY_COLLECTIVE_GROUPS),
         ],
-        sub="Grup dengan minimal 50 anggota. Pure collective berarti grupnya anomali "
-        "sementara kurang dari 25% anggotanya pernah ditandai detektor individual.",
+        sub="Isolation Forest pada profil kelompok, bukan pada baris. Ditampilkan hanya kelompok "
+        "non-geografis, karena hasil berbasis negara bagian didominasi yurisdiksi kecil.",
     )
 
 
