@@ -104,6 +104,9 @@ def run_phase2(clean, appdeny):
     clarans_labels, medoid_ids, clarans_cost = p2.run_clarans(Xc, idx_small, BEST_K, RANDOM_STATE)
 
     p2.export_phase2(clean, profile, idx_small, clarans_labels, DATA_PROCESSED)
+    p5.export_clustering_comparison(
+        Xc, clean["kmeans_cluster"].values, idx_med, db_labels, idx_small,
+        hier_labels, clarans_labels, DATA_PROCESSED, RANDOM_STATE)
 
     print(f"Phase 2: BEST_K={BEST_K}  clusters={clean['kmeans_cluster'].nunique()}  "
           f"dbscan_noise={len(dbscan_noise_ids)}")

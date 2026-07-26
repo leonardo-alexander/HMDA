@@ -472,6 +472,8 @@ elif rules_all is not None:
 phase1_missing = read("dash_phase1_missingness.csv")      # field, missing_pct, fate
 phase1_features = read("dash_phase1_feature_importance.csv")  # feature, corr, mi, score, role
 phase1_summary = read("dash_phase1_cleaning_summary.csv")  # raw_rows, clean_rows, duplicates_removed, ...
+# Fase 2: head-to-head clustering validity metrics (silhouette, DB, CH, ARI vs K-Means)
+clustering_cmp = read("dash_clustering_comparison.csv")
 state_summary = read(
     "dash_state_summary.csv"
 )  # state_code, n, approval_rate, median_income, median_loan, ...
@@ -497,7 +499,7 @@ if scatter is None:
 SEGMENT_LABEL_ID = {
     "Refinancers (rate & cash-out)": "Refinancer (rate & cash-out)",
     "Property investors": "Investor properti",
-    "Mainstream prime purchasers": "Pembeli prime mainstream",
+    "Mainstream prime purchasers": "Konsumen primer",
     "Manufactured-housing applicants": "Pemohon manufactured-housing",
     "DTI-stressed borrowers": "Peminjam DTI tinggi",
     "Jumbo / high-net-worth buyers": "Pembeli jumbo / high-net-worth",
@@ -1649,6 +1651,83 @@ def kpi_card(label, value, color):
     )
 
 
+# Header link buttons (GitHub / dataset source). Ghost-button styling so they read as
+# secondary chrome against the navy gradient rather than competing with the title.
+HEADER_LINK_STYLE = {
+    "display": "inline-block",
+    "padding": "7px 14px",
+    "borderRadius": "8px",
+    "border": "1px solid rgba(255,255,255,0.35)",
+    "background": "rgba(255,255,255,0.10)",
+    "color": "#ffffff",
+    "fontSize": "12px",
+    "fontWeight": "600",
+    "textDecoration": "none",
+    "letterSpacing": "0.2px",
+}
+
+
+def why(items, title="Mengapa metode ini dipilih? (klik untuk membuka)"):
+    """Collapsible methodology justification: a list of (question, answer) pairs.
+
+    Rendered as a native <details> block so every analytical choice carries its
+    rationale inline, without crowding the charts.
+    """
+    rows = []
+    for q, a in items:
+        rows.append(
+            html.Div(
+                [
+                    html.Div(
+                        q,
+                        style={
+                            "fontWeight": "700",
+                            "color": NAVY,
+                            "fontSize": "12.5px",
+                            "marginBottom": "3px",
+                        },
+                    ),
+                    html.Div(
+                        a,
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "lineHeight": "1.6",
+                        },
+                    ),
+                ],
+                style={
+                    "marginBottom": "12px",
+                    "paddingLeft": "10px",
+                    "borderLeft": f"2px solid {GRID}",
+                },
+            )
+        )
+    return html.Details(
+        [
+            html.Summary(
+                title,
+                style={
+                    "cursor": "pointer",
+                    "fontWeight": "700",
+                    "fontSize": "12.5px",
+                    "color": STEEL,
+                    "padding": "4px 0",
+                    "userSelect": "none",
+                },
+            ),
+            html.Div(rows, style={"marginTop": "12px"}),
+        ],
+        style={
+            "background": "#f8fafd",
+            "border": f"1px solid {BORDER}",
+            "borderRadius": "10px",
+            "padding": "12px 16px",
+            "marginBottom": "16px",
+        },
+    )
+
+
 def panel(title, children, sub=None):
     head = [
         html.H3(
@@ -2474,6 +2553,30 @@ app.layout = html.Div(
                         "marginTop": "6px",
                     },
                 ),
+                html.Div(
+                    [
+                        html.A(
+                            "Kode sumber (GitHub)",
+                            href="https://github.com/leonardo-alexander/HMDA",
+                            target="_blank",
+                            rel="noopener noreferrer",
+                            style=HEADER_LINK_STYLE,
+                        ),
+                        html.A(
+                            "Sumber dataset (FFIEC / CFPB)",
+                            href="https://ffiec.cfpb.gov/data-publication/snapshot-national-loan-level-dataset/2022",
+                            target="_blank",
+                            rel="noopener noreferrer",
+                            style=HEADER_LINK_STYLE,
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "gap": "10px",
+                        "flexWrap": "wrap",
+                        "marginTop": "16px",
+                    },
+                ),
             ],
             style={
                 "background": "linear-gradient(120deg, #0e2340 0%, #16345c 46%, #245ea3 100%)",
@@ -2544,9 +2647,165 @@ app.layout = html.Div(
 )
 
 
+# ============================================================ Methodology rationale
+# Every threshold and algorithm choice below is stated with its reason, so the dashboard
+# defends its own methodology instead of presenting bare numbers.
+WHY_PHASE1 = [
+    ("Mengapa kolom dengan >60% nilai kosong dibuang?",
+     "Ini missingness struktural, bukan kualitas data yang buruk. Mengimputasi kolom yang "
+     "mayoritas isinya kosong berarti mengarang lebih dari separuh nilainya, dan distribusi "
+     "buatan itu akan mendominasi data asli. Ambang 60% sengaja longgar (bukan 20-30%) karena "
+     "banyak field HMDA kosong akibat aturan pelaporan, bukan kesalahan; selama masih ada 40% "
+     "nilai nyata, kolom tetap dipertahankan."),
+    ("Mengapa imputasi median, bukan mean?",
+     "Distribusi income, loan_amount, dan property_value sangat skewed ke kanan dengan outlier "
+     "ekstrem (ada property value $130 juta). Mean tertarik oleh nilai raksasa itu sehingga "
+     "\"pusat\" yang diisikan jadi terlalu tinggi untuk mayoritas pemohon. Median tahan terhadap "
+     "ekor ekstrem sehingga tetap mewakili aplikasi tipikal."),
+    ("Mengapa tidak memakai KNN imputation atau model imputasi?",
+     "Tiga alasan: (1) biaya - mencari tetangga terdekat pada 100.000 baris jauh lebih mahal "
+     "daripada satu statistik ringkas; (2) auditabilitas - untuk data regulasi, \"diisi median "
+     "kolom\" dapat dipertanggungjawabkan, sedangkan nilai hasil model sulit dijelaskan ke "
+     "regulator; (3) risiko sirkularitas - imputasi berbasis fitur lain menanamkan korelasi "
+     "buatan antar fitur, yang kemudian bisa \"ditemukan\" kembali sebagai aturan di Fase 3."),
+    ("Mengapa kategorikal diisi \"Unknown\", bukan modus?",
+     "Karena kekosongan di sini bermakna: sering menandakan Exempt atau memang tidak dilaporkan. "
+     "Mengisi dengan modus akan menghapus sinyal itu sekaligus menggelembungkan kategori "
+     "terbanyak secara artifisial. \"Unknown\" mempertahankannya sebagai kategori tersendiri "
+     "yang bisa dianalisis."),
+    ("Mengapa menambah indikator _was_missing?",
+     "Agar jejak imputasi tetap terekam. Tanpa itu, nilai hasil imputasi tak bisa dibedakan dari "
+     "nilai asli, sehingga analisis lanjutan tidak tahu mana yang data nyata. Indikator ini juga "
+     "sengaja dikeluarkan dari input Fase 2-4 karena statusnya diagnostik proses, bukan "
+     "karakteristik pemohon."),
+    ("Mengapa fitur dipartisi menjadi lima tipe?",
+     "Karena tiap tipe menuntut perlakuan berbeda, dan salah perlakuan menciptakan kesalahan "
+     "diam-diam. Memperlakukan CATEG_CODE (mis. loan_purpose 1/2/3) sebagai angka kontinu akan "
+     "menciptakan ordinality palsu, seolah tujuan 3 \"tiga kali\" tujuan 1. Partisi ini "
+     "divalidasi harus menutup setiap kolom sehingga tidak ada fitur yang terlewat atau "
+     "diperlakukan ganda."),
+    ("Mengapa fitur pasca-keputusan dikecualikan dari Fase 2-4?",
+     "Untuk mencegah kebocoran data (leakage). Field seperti interest_rate, total_loan_costs, "
+     "dan origination_charges baru ada SETELAH aplikasi disetujui. Memakainya untuk memprediksi "
+     "persetujuan berarti menebak hasil dari hasil: akurasinya akan tampak tinggi tetapi tidak "
+     "berguna, karena saat aplikasi baru masuk field itu belum ada."),
+    ("Mengapa winsorize 1%/99% hanya pada salinan clustering?",
+     "K-Means meminimalkan jarak kuadrat, jadi satu properti $130 juta bisa menarik seluruh "
+     "centroid dan membuat cluster tak bermakna. Winsorize mengekang ekor tanpa membuang baris. "
+     "Ini hanya diterapkan pada salinan untuk clustering; nilai asli tetap utuh untuk profiling, "
+     "association rules, dan deteksi anomali - yang justru membutuhkan nilai ekstrem itu."),
+    ("Mengapa StandardScaler untuk clustering tetapi RobustScaler untuk deteksi anomali?",
+     "Karena tujuannya berlawanan. Clustering memakai jarak Euclidean sehingga setiap fitur harus "
+     "setara: tanpa penskalaan, loan_amount (ratusan ribu) akan menenggelamkan CLTV (persen), dan "
+     "z-score StandardScaler mewujudkan kesetaraan itu. Deteksi anomali justru mencari outlier, "
+     "jadi penskalaan tidak boleh terdistorsi olehnya: mean dan standar deviasi tertarik oleh "
+     "outlier sehingga outlier \"menyembunyikan diri\" dengan menggelembungkan std, sedangkan "
+     "median dan IQR pada RobustScaler tidak sensitif sehingga anomali tetap menonjol."),
+]
+
+WHY_PHASE2 = [
+    ("Mengapa K-Means dijadikan metode utama?",
+     "Karena hanya K-Means yang skalabel ke seluruh 99.995 aplikasi. Kompleksitasnya linear "
+     "terhadap jumlah baris, sedangkan hierarchical butuh matriks jarak berpasangan (O(n²) memori, "
+     "puluhan GB pada 100k baris) sehingga mustahil dijalankan penuh. Selain itu K-Means unggul "
+     "pada seluruh metrik validitas saat diuji pada sampel yang sama (lihat tabel di atas)."),
+    ("Mengapa K=7, dan atas dasar apa?",
+     "K dipilih berdasarkan silhouette tertinggi, bukan elbow. Elbow hanya memberi kandidat dan "
+     "penafsirannya subjektif (\"di mana sikunya?\"), sedangkan silhouette mengukur langsung "
+     "seberapa rapat sebuah titik ke cluster-nya dibanding cluster terdekat, sehingga bisa "
+     "dibandingkan antar K secara objektif. Kode memakai best_k = sil_k, jadi K=7 adalah K dengan "
+     "silhouette maksimum pada rentang 2-10."),
+    ("Mengapa tetap menjalankan DBSCAN?",
+     "Untuk dua hal yang tidak bisa dilakukan K-Means: (1) K-Means memaksa setiap titik masuk "
+     "cluster dan mengasumsikan bentuk membulat, sedangkan DBSCAN berbasis densitas sehingga "
+     "menemukan bentuk sembarang; (2) DBSCAN secara eksplisit menandai noise, dan 895 titik noise "
+     "itu justru menjadi salah satu dari lima detektor pada ensemble anomali Fase 4."),
+    ("Mengapa hierarchical (Ward)?",
+     "Sebagai validasi struktur tanpa menetapkan K di awal. Ward membangun hierarki penuh yang "
+     "bisa dipotong pada K berapa pun, jadi pertanyaannya berubah menjadi \"apakah struktur 7 "
+     "segmen benar-benar ada di data?\" ARI 0,906 terhadap K-Means menjawab ya: kesepakatan kuat, "
+     "menegaskan segmentasi bukan artefak K-Means."),
+    ("Mengapa CLARANS (k-medoids)?",
+     "Karena pusat clusternya adalah aplikasi nyata (medoid), bukan rata-rata sintetis. Centroid "
+     "K-Means bisa berupa titik yang tidak pernah ada, sedangkan medoid bisa ditunjuk sebagai "
+     "\"contoh konkret segmen ini\". Medoid juga lebih robust terhadap outlier karena tidak "
+     "dihitung dari rata-rata."),
+    ("Mengapa DBSCAN dan hierarchical dijalankan pada sampel, bukan seluruh data?",
+     "Bukan karena algoritmanya menyampel sendiri, melainkan keputusan teknis. Hierarchical wajib "
+     "disampel: matriks linkage-nya O(n²) memori, dan pada 100.000 baris itu sekitar 10 miliar "
+     "pasangan sehingga pasti kehabisan memori. DBSCAN sebenarnya bisa lebih besar, tetapi menjadi "
+     "lambat dan penyetelan eps makin sensitif; 20.000 baris sudah cukup untuk mengukur struktur "
+     "densitas."),
+]
+
+WHY_PHASE3 = [
+    ("Mengapa minimum support 2%?",
+     "Pada 67.827 aplikasi berkeputusan, 2% berarti sekitar 1.357 aplikasi: cukup besar agar "
+     "estimasi confidence stabil dan tidak lahir dari segelintir kasus, tetapi cukup kecil agar "
+     "segmen minoritas yang penting (mis. manufactured housing) tidak lenyap sebelum dianalisis. "
+     "Ambang ini juga menahan ledakan kombinatorial jumlah itemset."),
+    ("Mengapa lift harus > 1,2?",
+     "Lift = 1,0 berarti antecedent dan konsekuen statistik independen: aturannya tidak memberi "
+     "informasi apa pun. Ambang 1,2 menuntut kejadian bersama minimal 20% lebih sering daripada "
+     "kebetulan, sehingga menyaring asosiasi sepele yang hanya muncul karena kedua item sama-sama "
+     "umum."),
+    ("Mengapa confidence minimal 55%?",
+     "Karena harus mengalahkan tebakan dasar. Base rate-nya 23,1% Denied dan 76,9% Originated, "
+     "jadi 55% menempatkan aturan penolakan jauh di atas base rate-nya (23,1%) sekaligus melewati "
+     "ambang mayoritas sederhana: bila aturan berkata \"Denied\", lebih dari separuh kasus yang "
+     "cocok memang ditolak."),
+    ("Mengapa panjang itemset dibatasi maksimal 3?",
+     "Demi interpretabilitas dan biaya. Aturan dengan 5-6 kondisi praktis tidak bisa "
+     "dioperasionalkan oleh tim underwriting, dan jumlah kombinasi tumbuh eksplosif seiring "
+     "panjang itemset. Tiga kondisi cukup untuk menangkap interaksi bermakna (mis. DTI + jenis "
+     "lien + jenis loan) tanpa menjadi tak terbaca."),
+    ("Mengapa ada improvement filter 2%, dan mengapa dari 28 tersisa 11?",
+     "Karena lolos ambang saja tidak berarti sebuah aturan menambah pengetahuan. Menambahkan "
+     "\"White\" atau \"First_Lien\" ke aturan DTI>60% menghasilkan aturan baru yang tetap lolos "
+     "ambang, padahal confidence-nya nyaris sama dengan aturan induknya - hanya pengulangan "
+     "dengan kata tambahan. Improvement filter mensyaratkan sebuah aturan mengungguli sub-rule "
+     "terbaiknya minimal 2 poin persentase. Hasilnya 28 aturan kandidat menyusut menjadi 11 yang "
+     "benar-benar berbeda satu sama lain."),
+    ("Mengapa aturan diuji signifikansinya (chi-square dan Wilson CI)?",
+     "Karena support dan confidence tidak memberi tahu apakah pola bisa muncul secara kebetulan. "
+     "Chi-square menguji apakah asosiasinya berbeda nyata dari independen, dan Wilson confidence "
+     "interval memberi rentang ketidakpastian confidence yang tetap layak pada n kecil maupun "
+     "proporsi mendekati 0 atau 1."),
+]
+
+WHY_PHASE4 = [
+    ("Mengapa memakai lima detektor sekaligus?",
+     "Karena tiap metode punya titik buta, dan dua filosofi deteksi menangkap hal berbeda. IQR, "
+     "Z-score, dan Isolation Forest bersifat global: mencari nilai yang menyimpang dari "
+     "distribusi seluruh dataset. LOF dan DBSCAN-noise bersifat kontekstual: mencari rekaman yang "
+     "tampak normal per fitur tetapi aneh dibanding tetangganya. Memakai satu saja akan melewatkan "
+     "seluruh kelas anomali yang lain."),
+    ("Mengapa ambang konsensus 3 dari 5 suara?",
+     "Untuk menekan false positive. Metode tunggal mudah menandai rekaman yang sebenarnya wajar, "
+     "tetapi kesepakatan mayoritas dari lima detektor yang bekerja dengan prinsip berbeda jauh "
+     "lebih sulit terjadi secara kebetulan. Ambang ini juga memaksa setidaknya satu metode global "
+     "dan satu kontekstual ikut setuju pada sebagian besar kasus."),
+    ("Mengapa contamination Isolation Forest dan LOF diset 1%?",
+     "Ini asumsi operasional tentang porsi rekaman yang layak ditinjau manual, bukan klaim bahwa "
+     "tepat 1% data itu salah. Nilainya dipilih agar antrean tinjauan tetap realistis; parameter "
+     "ini menentukan ambang skor, bukan kebenaran suatu rekaman - itulah sebabnya keputusan akhir "
+     "tetap lewat triase."),
+    ("Mengapa 15 rekaman teratas ditriase manual, bukan langsung dibuang?",
+     "Karena nilai ekstrem tidak sama dengan salah. Jumbo loan $9 juta itu ekstrem tetapi sah, "
+     "sedangkan CLTV 900% mustahil secara aritmetika. Membedakannya butuh uji konsistensi internal "
+     "(apakah CLTV x property value cocok dengan loan plus senior lien, apakah income masuk akal "
+     "untuk membayar utang). Hasilnya verdict berbukti, bukan sekadar label \"aneh\"."),
+    ("Mengapa outlier kolektif dilaporkan terpisah?",
+     "Karena kelima detektor menilai rekaman satu per satu sehingga secara desain buta terhadap "
+     "pola kelompok. Fakta bahwa 100% loan >= $1 juta berakhiran \"...5.000\" tidak membuat satu "
+     "pun loan itu janggal; yang janggal adalah polanya secara kolektif, dan itu tanda aturan "
+     "pembulatan HMDA - proses pembangkitan data, bukan sinyal risiko."),
+]
+
+
 # ============================================================ Fase 1 (preprocessing)
 _FATE_LABEL = {
-    "dropped": "Dibuang (>40% kosong)",
+    "dropped": "Dibuang (>60% kosong)",
     "median_imputed": "Imputasi median",
     "filled_unknown": "Diisi 'Unknown'",
 }
@@ -2569,6 +2828,88 @@ def _stat_tile(label, value, color=NAVY):
             "flex": "1", "minWidth": "150px", "background": CARD, "borderRadius": "14px",
             "padding": "14px 16px", "boxShadow": SOFT_SHADOW, "border": f"1px solid {BORDER}",
         },
+    )
+
+
+def _clustering_comparison_panel():
+    """Fase 2 method comparison: the metrics table plus a plain-language verdict."""
+    if clustering_cmp is None or not len(clustering_cmp):
+        return panel(
+            "Perbandingan metode clustering",
+            [
+                html.Div(
+                    "Data perbandingan belum tersedia. Jalankan `python app/build_data.py` "
+                    "untuk membuat dash_clustering_comparison.csv.",
+                    style={"color": MUTE, "fontSize": "12px"},
+                )
+            ],
+        )
+    d = clustering_cmp.copy()
+    d = d.rename(
+        columns={
+            "method": "Metode",
+            "scope": "Cakupan",
+            "n_clusters": "Jumlah cluster",
+            "noise": "Noise",
+            "silhouette": "Silhouette ↑",
+            "davies_bouldin": "Davies-Bouldin ↓",
+            "calinski_harabasz": "Calinski-Harabasz ↑",
+            "ari_vs_kmeans": "ARI vs K-Means",
+        }
+    )
+    show = [c for c in ["Metode", "Cakupan", "Jumlah cluster", "Noise", "Silhouette ↑",
+                        "Davies-Bouldin ↓", "Calinski-Harabasz ↑", "ARI vs K-Means"]
+            if c in d.columns]
+
+    # Verdict computed from the data, not hard-coded, so it stays true after a re-run.
+    same = clustering_cmp[clustering_cmp["scope"].astype(str).str.contains("4.000")]
+    verdict = ""
+    if len(same):
+        best = same.loc[same["silhouette"].idxmax()]
+        verdict = (
+            f"Pada sampel 4.000 baris yang sama, pemenangnya adalah {best['method']} "
+            f"(silhouette {best['silhouette']:.3f}, Davies-Bouldin {best['davies_bouldin']:.3f}, "
+            f"Calinski-Harabasz {best['calinski_harabasz']:.0f})."
+        )
+    return panel(
+        "Perbandingan metode clustering: mana yang terbaik dan mengapa",
+        [
+            _table(d[show]),
+            html.Div(
+                [
+                    html.P(
+                        [
+                            html.B("Cara membaca: "),
+                            "Silhouette makin tinggi makin baik (cluster rapat dan terpisah). "
+                            "Davies-Bouldin makin rendah makin baik (cluster tidak saling tumpang tindih). "
+                            "Calinski-Harabasz makin tinggi makin baik. ARI mengukur kesepakatan "
+                            "dengan K-Means: 1,0 identik, 0 acak.",
+                        ],
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6",
+                               "margin": "12px 0 8px"},
+                    ),
+                    html.P(
+                        [html.B("Kesimpulan: "), verdict, " K-Means dipakai sebagai segmentasi "
+                         "utama karena unggul pada ketiga metrik validitas sekaligus satu-satunya "
+                         "yang skalabel ke seluruh 99.995 aplikasi. Ward hierarchical menyepakatinya "
+                         "kuat (ARI 0,906), yang menegaskan struktur 7 segmen memang ada di data dan "
+                         "bukan artefak satu algoritma. CLARANS lebih rendah (ARI 0,710) karena "
+                         "mengoptimalkan medoid, bukan centroid, sehingga wajar berbeda."],
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6", "margin": "0"},
+                    ),
+                    html.P(
+                        "Catatan kejujuran metrik: baris DBSCAN diukur pada sampel 20.000 dan "
+                        "mengecualikan noise, jadi angkanya tidak sebanding langsung dengan baris "
+                        "sampel 4.000. Baris \"K-Means (pada sampel 4.000)\" sengaja disertakan "
+                        "sebagai pembanding setara.",
+                        style={"fontSize": "11.5px", "color": MUTE, "lineHeight": "1.6",
+                               "margin": "10px 0 0"},
+                    ),
+                ]
+            ),
+            why(WHY_PHASE2, "Mengapa K-Means, DBSCAN, Hierarchical, dan CLARANS? (klik)"),
+        ],
+        sub="Semua metode dinilai pada matriks berskala yang benar-benar dipakai algoritmanya.",
     )
 
 
@@ -2660,7 +3001,7 @@ def _fase1_content():
             panel(
                 "Missingness per kolom dan penanganannya",
                 [graph(fig_m)],
-                sub="Kolom dengan >40% nilai kosong dibuang; sisanya diimputasi median (fitur "
+                sub="Kolom dengan >60% nilai kosong dibuang; sisanya diimputasi median (fitur "
                 "kontinu) atau diisi 'Unknown' (fitur kategorikal).",
             )
         )
@@ -2671,7 +3012,7 @@ def _fase1_content():
             [
                 html.Ul(
                     [
-                        html.Li([html.B("Buang kolom >40% hilang."), " Missingness struktural: "
+                        html.Li([html.B("Buang kolom >60% hilang."), " Missingness struktural: "
                                  "mengimputasi kolom yang mayoritasnya kosong sama saja mengarang data."]),
                         html.Li([html.B("Fitur CONTINUOUS -> imputasi median."), " Median dipilih, bukan "
                                  "mean, karena distribusi income/loan/property sangat skewed dengan outlier "
@@ -2754,6 +3095,20 @@ def _fase1_content():
                     "menjaga outlier tetap menonjol.",
                     style={"fontSize": "12px", "color": MUTE, "margin": "10px 0 0"},
                 ),
+            ],
+        )
+    )
+
+    children.append(
+        panel(
+            "Justifikasi metodologi Fase 1",
+            [
+                html.P(
+                    "Setiap ambang dan metode di atas dipilih dengan alasan eksplisit. "
+                    "Buka bagian di bawah untuk penjelasan lengkapnya.",
+                    style={"fontSize": "12px", "color": MUTE, "margin": "0 0 10px"},
+                ),
+                why(WHY_PHASE1, "Mengapa A dan bukan B? - 9 keputusan prapemrosesan (klik)"),
             ],
         )
     )
@@ -2911,6 +3266,7 @@ def render(tab):
                     "(dilatih pada seluruh data); DBSCAN, Hierarchical, dan CLARANS dijalankan pada sampel "
                     "untuk validasi dan cross-check, sebagaimana didokumentasikan di Fase 2 notebook.",
                 ),
+                _clustering_comparison_panel(),
                 html.Div(id="segments-method-panel"),
             ]
         )
@@ -2931,8 +3287,10 @@ def render(tab):
                             "persentase. Bagian bisnis di bawah menampilkan yang lolos filter itu; daftar kandidat lengkap, "
                             "berikut improvement filter-nya, ada lebih jauh ke bawah bagi yang ingin melihat semua "
                             "temuan miner.",
-                            style={"fontSize": "12px", "color": INK, "margin": "0"},
-                        )
+                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                        ),
+                        why(WHY_PHASE3,
+                            "Mengapa support 2%, lift 1,2, confidence 55%, dan hanya 11 aturan? (klik)"),
                     ],
                 ),
                 panel(
@@ -3039,8 +3397,10 @@ def render(tab):
                             f"memberi suara pada tiap aplikasi; {n_hc:,} adalah anomali keyakinan tinggi (3+ metode "
                             f'sepakat). 15 yang paling ekstrem ditriase manual menjadi verdict beserta bukti, bukan '
                             f'sekadar ditandai "aneh".',
-                            style={"fontSize": "12px", "color": INK, "margin": "0"},
-                        )
+                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                        ),
+                        why(WHY_PHASE4,
+                            "Mengapa 5 detektor, ambang 3 suara, dan RobustScaler? (klik)"),
                     ],
                 ),
                 panel(

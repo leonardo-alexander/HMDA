@@ -4,3 +4,10 @@ __pycache__/
 .ipynb_checkpoints/
 debug.log
 *.bak
+*.prebak
+
+# Generated build artifacts in reports/. The hand-written reports
+# (Preprocessing_Report.md, Knowledge_Discovery_Report.md) and
+# Metodologi_dan_Justifikasi.md stay tracked - they are deliverables.
+reports/HMDA_Interactive_Dashboard.html
+reports/*_generated.md

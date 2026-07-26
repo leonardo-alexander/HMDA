@@ -1,0 +1,6 @@
+method,scope,n_rows,n_clusters,noise,silhouette,davies_bouldin,calinski_harabasz,ari_vs_kmeans
+K-Means,Seluruh data (99.995),99995,7,0,0.303,1.146,21867.0,1.0
+DBSCAN,Sampel 20.000,20000,17,895,0.297,1.09,1810.0,0.849
+Hierarchical (Ward),Sampel 4.000,4000,7,0,0.294,1.152,837.0,0.906
+CLARANS (k-medoids),Sampel 4.000,4000,7,0,0.245,1.242,768.0,0.71
+K-Means (pada sampel 4.000),Sampel 4.000,4000,7,0,0.303,1.137,869.0,1.0

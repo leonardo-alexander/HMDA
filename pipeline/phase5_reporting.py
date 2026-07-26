@@ -88,6 +88,79 @@ def export_phase1_aggregates(miss, high_missing, feature_selection_audit,
           f"{len(fi)} ranked features, {clean_rows:,} clean rows")
 
 
+def export_clustering_comparison(Xc, kmeans_labels, idx_med, db_labels, idx_small,
+                                 hier_labels, clarans_labels, out_dir,
+                                 random_state=cfg.RANDOM_STATE):
+    """Computes the head-to-head clustering comparison the dashboard's Fase 2 table shows.
+
+    Every metric is measured on the scaled matrix the algorithm actually saw, and each
+    method is additionally scored on the SAME 4,000-row sample so the numbers are
+    comparable rather than measured on different populations. ARI is versus K-Means.
+    """
+    from sklearn.metrics import (adjusted_rand_score, calinski_harabasz_score,
+                                 davies_bouldin_score, silhouette_score)
+    out_dir = Path(out_dir)
+    idx_med = np.asarray(idx_med)
+    idx_small = np.asarray(idx_small)
+    Xv = Xc.values if hasattr(Xc, "values") else np.asarray(Xc)
+
+    def _scores(X, labels):
+        labels = np.asarray(labels)
+        mask = labels != -1  # exclude DBSCAN noise from validity metrics
+        Xm, lm = X[mask], labels[mask]
+        if len(set(lm.tolist())) < 2:
+            return np.nan, np.nan, np.nan
+        n = min(10000, len(Xm))
+        return (
+            float(silhouette_score(Xm, lm, sample_size=n, random_state=random_state)),
+            float(davies_bouldin_score(Xm, lm)),
+            float(calinski_harabasz_score(Xm, lm)),
+        )
+
+    km = np.asarray(kmeans_labels)
+    # position lookup so sample labels can be aligned back onto K-Means labels
+    pos = {v: i for i, v in enumerate(idx_med)}
+    small_in_med = np.array([pos[v] for v in idx_small])
+
+    rows = []
+    sil, db, ch = _scores(Xv, km)
+    rows.append({"method": "K-Means", "scope": "Seluruh data (99.995)", "n_rows": len(km),
+                 "n_clusters": int(len(set(km.tolist()))), "noise": 0,
+                 "silhouette": sil, "davies_bouldin": db, "calinski_harabasz": ch,
+                 "ari_vs_kmeans": 1.0})
+
+    dbl = np.asarray(db_labels)
+    sil, db, ch = _scores(Xv[idx_med], dbl)
+    rows.append({"method": "DBSCAN", "scope": "Sampel 20.000", "n_rows": len(dbl),
+                 "n_clusters": int(len(set(dbl[dbl != -1].tolist()))),
+                 "noise": int((dbl == -1).sum()),
+                 "silhouette": sil, "davies_bouldin": db, "calinski_harabasz": ch,
+                 "ari_vs_kmeans": float(adjusted_rand_score(km[idx_med], dbl))})
+
+    for name, lab in [("Hierarchical (Ward)", hier_labels), ("CLARANS (k-medoids)", clarans_labels)]:
+        lab = np.asarray(lab)
+        sil, db, ch = _scores(Xv[idx_small], lab)
+        rows.append({"method": name, "scope": "Sampel 4.000", "n_rows": len(lab),
+                     "n_clusters": int(len(set(lab.tolist()))), "noise": 0,
+                     "silhouette": sil, "davies_bouldin": db, "calinski_harabasz": ch,
+                     "ari_vs_kmeans": float(adjusted_rand_score(km[idx_small], lab))})
+
+    # K-Means re-scored on the same 4,000-row sample: an apples-to-apples reference row
+    sil, db, ch = _scores(Xv[idx_small], km[idx_small])
+    rows.append({"method": "K-Means (pada sampel 4.000)", "scope": "Sampel 4.000",
+                 "n_rows": len(idx_small), "n_clusters": int(len(set(km[idx_small].tolist()))),
+                 "noise": 0, "silhouette": sil, "davies_bouldin": db,
+                 "calinski_harabasz": ch, "ari_vs_kmeans": 1.0})
+
+    out = pd.DataFrame(rows).round(
+        {"silhouette": 3, "davies_bouldin": 3, "calinski_harabasz": 0, "ari_vs_kmeans": 3})
+    out.to_csv(out_dir / "dash_clustering_comparison.csv", index=False)
+
+    ari_hier = out.loc[out["method"].str.startswith("Hierarchical"), "ari_vs_kmeans"].iloc[0]
+    print(f"Clustering comparison exported: {len(out)} methods, ARI(Ward vs K-Means)={ari_hier}")
+    return out
+
+
 def build_standalone_dashboard(clean, appdeny, profile, final_rules, top_anom, fair_pivot, out_path,
                                random_state=cfg.RANDOM_STATE):
     """Builds the zero-setup standalone HTML dashboard (Overview/Segments/
