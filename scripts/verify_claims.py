@@ -138,6 +138,18 @@ check("Grup berbasis state", len(state_g), 29, 0)
 check("Yurisdiksi kecil", int(small_n), 15, 0)
 check("Porsi yurisdiksi kecil (%)", small_n / len(state_g) * 100, 52, 1.0)
 
+# Collective class reported as a negative result: verify the evidence behind that call.
+_flags = pd.read_csv(P / "p4_anomaly_flags.csv",
+                     usecols=["flag_iqr", "flag_z", "flag_iso", "lof_flag", "dbscan_noise",
+                              "_is_manufactured"], low_memory=False)
+_ind = ((_flags["flag_iqr"] == 1) | (_flags["flag_z"] == 1) | (_flags["flag_iso"] == 1)
+        | (_flags["lof_flag"] == 1) | (_flags["dbscan_noise"] == 1))
+check("Baseline ditandai individual (%)", _ind.mean() * 100, 11.0, 0.15)
+check("Manufactured ditandai individual (%)", _ind[_flags["_is_manufactured"] == 1].mean() * 100, 8.75, 0.15)
+_r = cg["member_individual_flag_rate"]
+check("Grup di atas baseline", int((_r > 0.1102).sum()), 28, 0)
+check("Median rate grup ditandai", float(_r.median()) * 100, 19.1, 0.3)
+
 kaudit = load("p4_kmeans_collective_audit.csv")
 mrow = kaudit[kaudit["segment_name"] == "Manufactured-housing applicants"].iloc[0]
 check("Manufactured skor bukti", int(mrow["evidence_score_0_4"]), 4, 0)

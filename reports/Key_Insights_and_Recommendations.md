@@ -82,9 +82,9 @@ jalur pembiayaan, bukan semata pada income pemohon.
   kelompok yang sama.
 - **Fase 3:** `construction_method=Manufactured → Denied` confidence **56,9%** lift **2,46**;
   dikombinasikan dengan `loan_type=Conventional` naik ke confidence **63,5%** lift **2,75**.
-- **Fase 4:** teridentifikasi sebagai kandidat kolektif dengan skor bukti **4/4**, ditandai
-  sebagai segmen langka dan terisolasi yang stabil, dengan hanya **8,7%** anggotanya pernah
-  ditandai detektor individual.
+- **Fase 4:** proporsi anggota yang ditandai detektor individual **8,75%**, sedikit di bawah
+  baseline portfolio **11,0%**. Ini melengkapi gambaran, tetapi bukan bukti outlier kolektif:
+  dua segmen lain justru lebih rendah lagi, **6,06%** dan **5,32%**.
 
 **Why it matters:**
 Segmen ini ditolak melalui jalur konvensional pada tingkat yang jauh lebih tinggi, padahal
@@ -134,7 +134,7 @@ loan-to-value pemohon tidak tersedia sehingga faktor perancu tidak dapat dikesam
 
 ---
 
-### 4. Nilai ekstrem dalam data ini terbukti sah, bukan kesalahan data
+### 4. Nilai ekstrem terbukti sah, dan kelas kolektif tidak terbukti ada
 
 **Finding:**
 Tidak satu pun rekaman paling ekstrem terbukti sebagai kesalahan data. Kedua filosofi deteksi
@@ -146,9 +146,12 @@ akan melewatkan seluruh kelas anomali yang lain.
   paling ekstrem ditriase manual dan **seluruhnya** berakhir **RARE BUT VALID**, nol kesalahan data.
 - **Fase 4 (taksonomi):** **9.959** outlier global (10,0%), **589** kontekstual/lokal (0,6%),
   dan hanya **476** tertangkap keduanya, menunjukkan kedua pendekatan tidak saling menggantikan.
-- **Fase 4 (kolektif tingkat grup):** dari 4 kelompok non-geografis yang ditandai Isolation
-  Forest, **3 di antaranya manufactured housing**, memperkuat temuan nomor 2 lewat jalur
-  bukti yang berbeda.
+- **Fase 4 (kolektif tingkat grup): hasil negatif.** Isolation Forest pada profil kelompok
+  menandai **33** kelompok, tetapi tidak satu pun memenuhi definisi outlier kolektif. Definisi
+  itu menuntut anggota yang normal secara individual, sedangkan **28 dari 33** kelompok justru
+  punya proporsi anggota anomali **di atas** baseline portfolio **11,0%**, dengan median
+  **19,1%**. Label *pure collective* juga tidak membedakan apa pun, karena ambang di bawah 25%
+  terlalu longgar untuk baseline 11,0%.
 
 **Why it matters:**
 Memakai ensemble anomali sebagai aturan hapus otomatis akan membuang aplikasi jumbo yang sah.
@@ -158,8 +161,9 @@ Perlakukan keluaran deteksi anomali sebagai antrean tinjauan manual, bukan filte
 
 **Confidence / caveat:**
 Triase manual baru mencakup 15 rekaman teratas, sehingga tidak menjamin seluruh 739 anomali
-berkeyakinan tinggi juga sah. Sisa **29** kelompok kolektif yang ditandai berbasis negara bagian
-dan **52%** di antaranya yurisdiksi kecil, sehingga sengaja tidak diklaim sebagai temuan.
+berkeyakinan tinggi juga sah. Untuk kelas kolektif, hasil negatif dilaporkan apa adanya: dari 33
+kelompok yang ditandai, **15** berasal dari yurisdiksi kecil dan **14** dari negara bagian besar,
+sehingga yang tertangkap sebagian besar efek ukuran kelompok dan geografi.
 
 ---
 
@@ -202,7 +206,7 @@ penalti yang melekat pada **jenis properti**: manufactured housing muncul sebaga
 kohesif sekaligus paling ditolak, dan ketiga fase berbeda menunjuk kelompok yang sama. Ketiga,
 **alasan resmi lender menyepakati temuan mining**, karena DTI tercatat 28,4% sebagai alasan
 terbanyak, sementara faktor terbesar kedua yaitu credit history 25,3% justru tidak ada di data. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
-dan pola kolektif tingkat kelompok justru menunjuk balik ke manufactured housing. Kelima, selisih
+sementara kelas outlier kolektif diperiksa penuh dan hasilnya negatif. Kelima, selisih
 persetujuan antar lingkungan **tetap ada setelah beban utang disamakan** dan paling lebar justru
 pada kelompok berisiko rendah, sementara selisih gender justru hilang setelah struktur pemohon
 disetarakan. Gabungan inilah yang tidak tampak dari
