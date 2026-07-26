@@ -2831,6 +2831,148 @@ def _stat_tile(label, value, color=NAVY):
     )
 
 
+# Load-test results, measured 26 Juli 2026 against app/index.py on the Flask development
+# server (localhost, Python 3.14, concurrency via thread pool). These are recorded
+# measurements from one run, not values recomputed by the pipeline, so they are stated
+# with their environment rather than presented as live metrics.
+LOADTEST_COLD = [
+    ("Fase 1 - Prapemrosesan", 299, 28),
+    ("Fase 2 - Segmentasi", 21, 12),
+    ("Fase 3 - Aturan Asosiasi", 30, 12),
+    ("Fase 4 - Deteksi Anomali", 129, 276),
+    ("Fase 5 - Pelaporan & Keadilan", 193, 47),
+]
+LOADTEST_CONC = [
+    (1, 50.6, 17, 35, 46),
+    (5, 207.7, 22, 37, 46),
+    (10, 222.7, 44, 57, 63),
+    (25, 217.4, 110, 124, 130),
+]
+
+WHY_LOADTEST = [
+    ("Mengapa yang diuji callback tab, bukan hanya halaman utama?",
+     "Karena halaman utama hanya mengirim kerangka HTML statis. Kerja sebenarnya terjadi di "
+     "endpoint /_dash-update-component, tempat callback membangun seluruh grafik dan tabel "
+     "sebuah tab. Menguji halaman statis saja akan menghasilkan angka yang terlihat bagus "
+     "tetapi tidak mewakili beban nyata."),
+    ("Mengapa dibedakan cold dan warm?",
+     "Karena fungsi render memakai cache (lru_cache maxsize 8) sementara aplikasi hanya punya "
+     "5 tab, sehingga tidak pernah ada eviction: tiap tab hanya mahal sekali per proses. "
+     "Melaporkan angka warm saja akan menyembunyikan biaya render pertama, dan itu justru "
+     "biaya yang dibayar pengguna pertama setiap kali proses baru dimulai."),
+    ("Mengapa throughput berhenti di sekitar 220 req/s?",
+     "Karena ada bottleneck yang terserialisasi: GIL Python ditambah development server. "
+     "Buktinya terlihat dari pola angkanya - dari concurrency 5 ke 25 throughput tetap "
+     "(208 → 217 req/s) sementara latency naik hampir linear (22 → 110 ms). Artinya "
+     "permintaan tambahan tidak diproses lebih paralel, hanya mengantre lebih panjang."),
+    ("Mengapa angka ini bukan angka produksi?",
+     "Tiga sebab: (1) pengujian memakai Flask development server, yang secara eksplisit "
+     "memperingatkan dirinya bukan untuk produksi, sedangkan Vercel memakai runtime WSGI "
+     "sendiri; (2) pengujian berjalan di localhost sehingga tanpa latency jaringan - payload "
+     "276 KB milik Fase 4 akan jauh lebih terasa pada koneksi nyata; (3) hanya satu mesin "
+     "penguji, tanpa variasi geografis. Angka ini valid sebagai profil relatif antar tab, "
+     "bukan sebagai kapasitas produksi."),
+    ("Apa implikasinya untuk deployment Vercel?",
+     "Cold start 2,44 detik dan memori 236 MB dibayar ulang setiap kali instance serverless "
+     "baru dimulai, dan penyebab utamanya sama: hmda_approve_deny.csv berukuran 27 MB dibaca "
+     "saat import. Merampingkan file itu ke kolom yang benar-benar dipakai What-If akan "
+     "memangkas cold start, pemakaian memori, dan ukuran bundle sekaligus."),
+]
+
+
+def _load_test_panel():
+    """Fase 5 reporting: measured performance profile of this dashboard."""
+    tiles = html.Div(
+        [
+            _stat_tile("Total request", "6.212"),
+            _stat_tile("Error", "0", GREEN),
+            _stat_tile("Throughput puncak", "223 req/s", STEEL),
+            _stat_tile("Latency p50 (warm)", "17 ms", TEAL),
+            _stat_tile("Cold start", "2,44 s", AMBER),
+            _stat_tile("Memori (RSS)", "236 MB", NAVY),
+        ],
+        style={"display": "flex", "gap": "14px", "flexWrap": "wrap", "marginBottom": "16px"},
+    )
+
+    cold_df = pd.DataFrame(
+        [{"Tab": t, "Render pertama (ms)": ms, "Ukuran respons (KB)": kb}
+         for t, ms, kb in LOADTEST_COLD]
+    )
+    conc_df = pd.DataFrame(
+        [{"Concurrency": c, "Throughput (req/s)": tp, "p50 (ms)": p50,
+          "p95 (ms)": p95, "p99 (ms)": p99}
+         for c, tp, p50, p95, p99 in LOADTEST_CONC]
+    )
+
+    return panel(
+        "Laporan uji beban (load test) dashboard",
+        [
+            html.P(
+                "Pengujian menembak endpoint callback yang benar-benar membangun tiap tab, "
+                "bukan sekadar halaman statis. Hasilnya: 6.212 request tanpa satu pun error.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+            ),
+            tiles,
+            html.Div(
+                [
+                    html.H4("Render pertama tiap tab (cache kosong)",
+                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    _table(cold_df),
+                    html.P(
+                        "Fase 1 paling lambat karena membangun tujuh panel sekaligus; Fase 4 "
+                        "menghasilkan respons terbesar (276 KB) karena scatter taksonomi memuat "
+                        "ribuan titik. Keduanya masih di bawah 300 ms.",
+                        style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 16px",
+                               "lineHeight": "1.6"},
+                    ),
+                    html.H4("Penskalaan terhadap concurrency (100 request, cache terisi)",
+                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    _table(conc_df),
+                    html.P(
+                        "Throughput mendatar di sekitar 220 req/s sejak concurrency 5, sementara "
+                        "latency naik hampir linear. Ini tanda bottleneck terserialisasi (GIL + "
+                        "development server): menambah concurrency tidak menambah kapasitas, "
+                        "hanya memperpanjang antrean.",
+                        style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 16px",
+                               "lineHeight": "1.6"},
+                    ),
+                    html.H4("Beban berkelanjutan 30 detik (concurrency 20)",
+                            style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+                    html.P(
+                        "5.507 request · 0 error · p50 28 ms · p95 45 ms · p99 58 ms · maks 85 ms. "
+                        "Latency stabil sepanjang pengujian, tanpa degradasi progresif maupun "
+                        "indikasi kebocoran memori. Endpoint statis melayani 581-685 req/s.",
+                        style={"fontSize": "12px", "color": INK, "margin": "0 0 14px",
+                               "lineHeight": "1.6"},
+                    ),
+                ]
+            ),
+            html.Div(
+                [
+                    html.B("Batas keberlakuan angka ini. ",
+                           style={"fontSize": "12px", "color": NAVY}),
+                    html.Span(
+                        "Pengujian memakai Flask development server di localhost, jadi tanpa "
+                        "latency jaringan dan bukan runtime yang dipakai Vercel. Angka warm juga "
+                        "diuntungkan cache render. Perlakukan ini sebagai profil relatif antar "
+                        "tab, bukan kapasitas produksi.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={
+                    "background": "#fff8e8",
+                    "border": "1px solid #f3d7a0",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "marginBottom": "14px",
+                },
+            ),
+            why(WHY_LOADTEST, "Mengapa diuji seperti ini, dan apa artinya? (klik)"),
+        ],
+        sub="Diukur 26 Juli 2026 · Flask development server · Python 3.14 · localhost",
+    )
+
+
 def _clustering_comparison_panel():
     """Fase 2 method comparison: the metrics table plus a plain-language verdict."""
     if clustering_cmp is None or not len(clustering_cmp):
@@ -3138,6 +3280,7 @@ def render(tab):
                 render("geography"),
                 render("whatif"),
                 render("fairness"),
+                _load_test_panel(),
             ]
         )
 
