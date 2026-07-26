@@ -34,8 +34,14 @@ def export_dashboard_aggregates(clean, appdeny, denials, out_dir, random_state=c
                   "4": "Collateral", "5": "Insufficient cash", "6": "Unverifiable information",
                   "7": "Incomplete application", "8": "Mortgage insurance denied", "9": "Other"}
         dcols = [c for c in denials.columns if c.startswith("denial_reason")]
-        dd = denials[dcols].astype(str).melt()["value"]
-        dd = dd[~dd.isin(["nan", "None", "", "10", "10.0"])].map(lambda x: REASON.get(str(x).split(".")[0], "Other"))
+        # Drop nulls BEFORE stringifying. denial_reason_2..4 are mostly empty (only the first
+        # reason is always filled), and str(NaN) == "nan" slipped past the old string filter on
+        # some dtypes, so 43k blank slots were being counted as the "Other" category and
+        # inflated it to 72.9% instead of its true 12.2%.
+        dd = denials[dcols].melt()["value"].dropna()
+        dd = dd.astype(str).str.strip()
+        dd = dd[~dd.isin(["nan", "NaN", "None", "", "10", "10.0", "1111", "1111.0"])]
+        dd = dd.map(lambda x: REASON.get(str(x).split(".")[0], "Other"))
         dr = dd.value_counts(normalize=True).mul(100).round(1).reset_index()
         dr.columns = ["reason", "pct_of_denials"]
         dr.to_csv(out_dir / "dash_denial_reasons.csv", index=False)

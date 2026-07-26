@@ -105,9 +105,9 @@ check("Manufactured+Conventional confidence", man_conv["confidence"] * 100, 63.5
 check("Manufactured+Conventional lift", man_conv["lift"], 2.75, 0.02)
 
 den = load("dash_denial_reasons.csv")
-check("Alasan Other", den[den["reason"] == "Other"]["pct_of_denials"].iloc[0], 12.2, 0.1)
-check("Alasan DTI", den[den["reason"] == "Debt-to-income"]["pct_of_denials"].iloc[0], 28.2, 0.1)
-check("Alasan credit history", den[den["reason"] == "Credit history"]["pct_of_denials"].iloc[0], 25.1, 0.1)
+check("Alasan Other", den[den["reason"] == "Other"]["pct_of_denials"].iloc[0], 11.6, 0.1)
+check("Alasan DTI", den[den["reason"] == "Debt-to-income"]["pct_of_denials"].iloc[0], 28.4, 0.1)
+check("Alasan credit history", den[den["reason"] == "Credit history"]["pct_of_denials"].iloc[0], 25.3, 0.1)
 
 # ---------------------------------------------------------------- Phase 4
 tax = load("dash_outlier_taxonomy_summary.csv")
@@ -151,12 +151,20 @@ check("Selisih tract DTI tinggi", geo[geo["dti_group"] == "High(>50%)"]["gap_pp"
 gg = load("dash_gender_gap.csv")
 if gg is not None:
     allrow = gg[gg["dti_group"] == "Semua"].set_index("derived_sex")["approval_rate"]
-    check("Gender Joint keseluruhan", allrow.get("Joint"), 83.0, 0.1)
-    check("Gender Male keseluruhan", allrow.get("Male"), 73.9, 0.1)
-    check("Gender Female keseluruhan", allrow.get("Female"), 72.3, 0.1)
+    check("Gender Male tunggal", allrow.get("Male"), 73.5, 0.1)
+    check("Gender Female tunggal", allrow.get("Female"), 71.9, 0.1)
     low = gg[gg["dti_group"] == "Low(<36%)"].set_index("derived_sex")["approval_rate"]
-    check("Gender Joint DTI rendah", low.get("Joint"), 88.6, 0.1)
-    check("Gender Female DTI rendah", low.get("Female"), 80.9, 0.1)
+    check("Gender Female DTI rendah", low.get("Female"), 80.8, 0.1)
+    check("Gender Male DTI rendah", low.get("Male"), 79.5, 0.1)
+    check("Joint dikeluarkan", "Joint" in set(gg["derived_sex"]), False)
+
+gctx = load("dash_gender_context.csv")
+if gctx is not None:
+    j = gctx[gctx["derived_sex"] == "Joint"].iloc[0]
+    check("Joint punya co-applicant (%)", j["pct_with_coapplicant"], 99.9, 0.1)
+    check("Joint median income", j["median_income"], 119, 0.5)
+    f = gctx[gctx["derived_sex"] == "Female"].iloc[0]
+    check("Female median income", f["median_income"], 71, 0.5)
 
 ad = pd.read_csv(I / "hmda_approve_deny.csv", usecols=["target_approved"])
 check("Aplikasi berkeputusan", len(ad), 67827, 0)

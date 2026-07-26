@@ -441,6 +441,9 @@ collective_summary = read(
     "dash_collective_summary.csv"
 )  # counts behind the group panel
 gender_gap = read("dash_gender_gap.csv")  # approval by applicant sex within DTI groups
+gender_context = read(
+    "dash_gender_context.csv"
+)  # raw derived_sex categories (Joint caveat)
 triage = _normalize_triage(
     read("p4_anomaly_triage.csv", index_col=0)
 )  # top-15 anomalies, verdict + evidence
@@ -1023,6 +1026,81 @@ def fig_rules_scatter(df, outcome, min_lift=1.0):
     return f
 
 
+WHY_GENDER = [
+    (
+        "Kenapa kategori Joint tidak ikut dibandingkan?",
+        "Karena Joint di HMDA bukan gender. Nilai itu berarti pemohon dan co-applicant berbeda "
+        "jenis kelamin, jadi sebenarnya penanda berkas dengan dua pemohon. Datanya jelas: 99,9% "
+        "berkas Joint punya co-applicant, sementara Female dan Male masing-masing 92,5% dan 94,3% "
+        "justru pemohon tunggal. Median income Joint juga $119rb, jauh di atas Female $71rb dan "
+        "Male $89rb.",
+    ),
+    (
+        "Apa akibatnya kalau Joint tetap dimasukkan?",
+        "Perbandingannya jadi menyesatkan. Joint tampak unggul dengan 83,0% berbanding Female "
+        "72,3%, tetapi selisih 10,7 poin itu sebagian besar mencerminkan rumah tangga berpenghasilan "
+        "dua orang melawan pemohon tunggal, bukan perlakuan berbeda terhadap gender.",
+    ),
+    (
+        "Bagaimana hasilnya setelah disetarakan?",
+        "Selisihnya nyaris hilang. Di antara 35.191 berkas pemohon tunggal, Male 73,5% dan Female "
+        "71,9%, jadi cuma 1,6 poin. Bahkan pada kelompok DTI rendah Female sedikit lebih tinggi, "
+        "80,8% berbanding 79,5%.",
+    ),
+    (
+        "Kenapa temuan ini tetap dilaporkan padahal selisihnya kecil?",
+        "Karena hasil yang mendekati nol juga temuan. Kalau cuma disparitas besar yang dilaporkan, "
+        "pembaca akan mengira setiap atribut demografis bermasalah. Di sini justru sebaliknya: "
+        "setelah struktur pemohon disetarakan, gender nyaris tidak membedakan hasil, berbeda dengan "
+        "selisih antar lingkungan yang tetap 12,1 poin.",
+    ),
+]
+
+
+def _gender_context_note():
+    """Show the raw derived_sex categories so the Joint exclusion is auditable."""
+    if gender_context is None or not len(gender_context):
+        return html.Div()
+    d = gender_context.copy()
+    tbl = pd.DataFrame(
+        {
+            "Kategori derived_sex": d["derived_sex"],
+            "Aplikasi": d["n"].map(lambda v: f"{int(v):,}"),
+            "Persetujuan": d["approval_rate"].map(lambda v: f"{v:.1f}%"),
+            "Punya co-applicant": d["pct_with_coapplicant"].map(lambda v: f"{v:.1f}%"),
+            "Median income": d["median_income"].map(lambda v: f"${v:,.0f}rb"),
+        }
+    )
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.B(
+                        "Kenapa Joint dikeluarkan. ",
+                        style={"fontSize": "12px", "color": NAVY},
+                    ),
+                    html.Span(
+                        "Joint bukan gender, melainkan penanda berkas dengan dua pemohon "
+                        "berbeda jenis kelamin. Tabel di bawah menunjukkan alasannya: 99,9% "
+                        "berkas Joint punya co-applicant dan median income-nya jauh lebih "
+                        "tinggi, jadi membandingkannya dengan pemohon tunggal berarti mengukur "
+                        "struktur rumah tangga, bukan gender.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={
+                    "background": "#fff8e8",
+                    "border": "1px solid #f3d7a0",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "margin": "14px 0 12px",
+                },
+            ),
+            _table(tbl),
+        ]
+    )
+
+
 @lru_cache(maxsize=1)
 def fig_gender_gap():
     """Approval by applicant sex within DTI groups, mirroring the tract-minority chart."""
@@ -1033,17 +1111,25 @@ def fig_gender_gap():
     d["dti_group"] = pd.Categorical(d["dti_group"], categories=order, ordered=True)
     d = d.sort_values("dti_group")
     f = px.bar(
-        d, x="dti_group", y="approval_rate", color="derived_sex", barmode="group",
+        d,
+        x="dti_group",
+        y="approval_rate",
+        color="derived_sex",
+        barmode="group",
         text=d["approval_rate"].map(lambda v: f"{v:.0f}%"),
-        labels={"dti_group": "Kelompok DTI", "approval_rate": "Tingkat persetujuan (%)",
-                "derived_sex": ""},
+        labels={
+            "dti_group": "Kelompok DTI",
+            "approval_rate": "Tingkat persetujuan (%)",
+            "derived_sex": "",
+        },
         color_discrete_sequence=QUAL,
         hover_data={"n": ":,"},
     )
     f.update_traces(textposition="outside", cliponaxis=False)
     f.update_layout(
-        template=TEMPLATE, height=400,
-        title="Persetujuan menurut gender di dalam tiap kelompok DTI",
+        template=TEMPLATE,
+        height=400,
+        title="Persetujuan Male vs Female, khusus pemohon tunggal",
         legend={"orientation": "h", "y": -0.18, "title": ""},
         margin=dict(l=10, r=10, t=44, b=10),
     )
@@ -1113,32 +1199,60 @@ def fig_rule_network(df, outcome, min_lift=1.0):
     traces = []
     for (a, s), lift in links.items():
         width = 1.2 if hi <= lo else 1.2 + (lift - lo) / (hi - lo) * 3.4
-        traces.append(go.Scatter(
-            x=[0.0, 1.0], y=[ay[a], hy[s]], mode="lines",
-            line=dict(width=width, color=RED if s == "DENIED" else GREEN),
-            opacity=0.35, hoverinfo="text",
-            hovertext=f"{a} → {s}<br>lift {lift:.2f}", showlegend=False,
-        ))
+        traces.append(
+            go.Scatter(
+                x=[0.0, 1.0],
+                y=[ay[a], hy[s]],
+                mode="lines",
+                line=dict(width=width, color=RED if s == "DENIED" else GREEN),
+                opacity=0.35,
+                hoverinfo="text",
+                hovertext=f"{a} → {s}<br>lift {lift:.2f}",
+                showlegend=False,
+            )
+        )
 
     deg = {a: sum(1 for (x, _) in links if x == a) for a in ants}
-    traces.append(go.Scatter(
-        x=[0.0] * n, y=[ay[a] for a in ants], mode="markers+text",
-        text=ants, textposition="middle left", textfont=dict(size=10, color=INK),
-        marker=dict(size=[13 + 4 * deg[a] for a in ants], color=STEEL,
-                    line=dict(width=1.5, color="white")),
-        hoverinfo="text", showlegend=False,
-    ))
-    traces.append(go.Scatter(
-        x=[1.0] * len(hubs), y=[hy[h] for h in hubs], mode="markers+text",
-        text=hubs, textposition="middle right",
-        textfont=dict(size=11, color=INK, family=FONT),
-        marker=dict(size=34, color=[RED if h == "DENIED" else GREEN for h in hubs],
-                    line=dict(width=2, color="white")),
-        hoverinfo="text", showlegend=False,
-    ))
+    traces.append(
+        go.Scatter(
+            x=[0.0] * n,
+            y=[ay[a] for a in ants],
+            mode="markers+text",
+            text=ants,
+            textposition="middle left",
+            textfont=dict(size=10, color=INK),
+            marker=dict(
+                size=[13 + 4 * deg[a] for a in ants],
+                color=STEEL,
+                line=dict(width=1.5, color="white"),
+            ),
+            hoverinfo="text",
+            showlegend=False,
+        )
+    )
+    traces.append(
+        go.Scatter(
+            x=[1.0] * len(hubs),
+            y=[hy[h] for h in hubs],
+            mode="markers+text",
+            text=hubs,
+            textposition="middle right",
+            textfont=dict(size=11, color=INK, family=FONT),
+            marker=dict(
+                size=34,
+                color=[RED if h == "DENIED" else GREEN for h in hubs],
+                line=dict(width=2, color="white"),
+            ),
+            hoverinfo="text",
+            showlegend=False,
+        )
+    )
 
-    title = ("Apa pendorong DENIED vs. ORIGINATED" if outcome == "All"
-             else f"Apa pendorong {outcome.upper()}")
+    title = (
+        "Apa pendorong DENIED vs. ORIGINATED"
+        if outcome == "All"
+        else f"Apa pendorong {outcome.upper()}"
+    )
     f = go.Figure(traces)
     f.update_layout(
         template=TEMPLATE,
@@ -1398,7 +1512,7 @@ def fig_dti_geo_gap():
         template=TEMPLATE,
         height=400,
         margin=dict(l=10, r=10, t=40, b=10),
-        title="Selisih bertahan setelah mengontrol DTI: tidak menutup dalam band DTI",
+        title="Selisih persetujuan tetap ada meski beban utang disamakan",
     )
     f.update_xaxes(automargin=True, tickfont=dict(size=11))
     f.update_yaxes(range=[0, 100])
@@ -3099,11 +3213,12 @@ WHY_DETECTORS = [
 
 WHY_TAXONOMY = [
     (
-        "Kenapa taksonomi ini cuma memuat dua kelas, bukan tiga?",
-        "Karena kelima detektor semuanya menilai baris satu per satu, jadi secara desain hanya bisa "
-        "menghasilkan outlier global dan kontekstual. Outlier kolektif menuntut unit analisis yang "
-        "berbeda, yaitu kelompok, sehingga ditangani terpisah pada panel anomali tingkat grup di "
-        "bawah.",
+        "Kenapa kartu kolektif memakai satuan kelompok, bukan baris?",
+        "Karena kelima detektor menilai baris satu per satu, sehingga secara desain hanya bisa "
+        "menghasilkan outlier global dan kontekstual. Outlier kolektif adalah properti kelompok, "
+        "jadi dihitung dengan Isolation Forest pada profil kelompok. Menyajikannya sebagai jumlah "
+        "baris akan menyesatkan, karena satu kelompok anomali bisa memuat ribuan baris yang "
+        "masing-masing sama sekali normal.",
     ),
     (
         "Kenapa outlier global jauh lebih banyak dari kontekstual?",
@@ -3378,103 +3493,153 @@ def _vif_panel():
 
 
 WHY_COLLECTIVE_GROUPS = [
-    ("Kenapa perlu deteksi tingkat grup?",
-     "Karena kelima detektor sebelumnya menilai baris satu per satu, jadi secara desain buta "
-     "terhadap pola yang cuma ada di tingkat kelompok. Sebuah kelompok bisa punya tanda-tanda "
-     "aneh sebagai kesatuan padahal tiap anggotanya wajar kalau dilihat sendirian."),
-    ("Bagaimana cara kerjanya?",
-     "Baris dikelompokkan menurut kombinasi bisnis, lalu tiap kelompok diringkas jadi median "
-     "dan IQR dari fitur anomali. Isolation Forest dijalankan pada profil kelompok itu, bukan "
-     "pada barisnya. Kelompok dengan anggota kurang dari 50 dibuang supaya ringkasannya tidak "
-     "lahir dari segelintir baris."),
-    ("Kenapa sebagian besar hasilnya tidak dianggap temuan?",
-     "Karena dari 29 kelompok berbasis negara bagian yang ditandai, 15 di antaranya atau 52% "
-     "adalah yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, atau kategori state yang "
-     "tidak diketahui. Kelompok kecil memang gampang terlihat menyimpang secara statistik, dan "
-     "itu variasi geografis biasa, bukan anomali yang perlu ditindaklanjuti. Menyebutnya temuan "
-     "akan mengada-ada."),
-    ("Apa itu pure collective candidate?",
-     "Kelompok yang ditandai anomali padahal kurang dari 25% anggotanya pernah ditandai detektor "
-     "individual. Inilah kasus yang paling berarti, karena keanehannya benar-benar muncul di "
-     "tingkat kelompok dan tidak akan tertangkap deteksi per baris."),
-    ("Kenapa field hasil keputusan tidak dipakai?",
-     "Supaya ini tetap penemuan struktural, bukan model yang memprediksi persetujuan. Kalau "
-     "action_taken atau alasan penolakan ikut masuk, yang ditemukan cuma cerminan keputusan yang "
-     "sudah diambil."),
+    (
+        "Kenapa perlu deteksi tingkat grup?",
+        "Karena kelima detektor sebelumnya menilai baris satu per satu, jadi secara desain buta "
+        "terhadap pola yang cuma ada di tingkat kelompok. Sebuah kelompok bisa punya tanda-tanda "
+        "aneh sebagai kesatuan padahal tiap anggotanya wajar kalau dilihat sendirian.",
+    ),
+    (
+        "Bagaimana cara kerjanya?",
+        "Baris dikelompokkan menurut kombinasi bisnis, lalu tiap kelompok diringkas jadi median "
+        "dan IQR dari fitur anomali. Isolation Forest dijalankan pada profil kelompok itu, bukan "
+        "pada barisnya. Kelompok dengan anggota kurang dari 50 dibuang supaya ringkasannya tidak "
+        "lahir dari segelintir baris.",
+    ),
+    (
+        "Kenapa sebagian besar hasilnya tidak dianggap temuan?",
+        "Karena dari 29 kelompok berbasis negara bagian yang ditandai, 15 di antaranya atau 52% "
+        "adalah yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, atau kategori state yang "
+        "tidak diketahui. Kelompok kecil memang gampang terlihat menyimpang secara statistik, dan "
+        "itu variasi geografis biasa, bukan anomali yang perlu ditindaklanjuti. Menyebutnya temuan "
+        "akan mengada-ada.",
+    ),
+    (
+        "Apa itu pure collective candidate?",
+        "Kelompok yang ditandai anomali padahal kurang dari 25% anggotanya pernah ditandai detektor "
+        "individual. Inilah kasus yang paling berarti, karena keanehannya benar-benar muncul di "
+        "tingkat kelompok dan tidak akan tertangkap deteksi per baris.",
+    ),
+    (
+        "Kenapa field hasil keputusan tidak dipakai?",
+        "Supaya ini tetap penemuan struktural, bukan model yang memprediksi persetujuan. Kalau "
+        "action_taken atau alasan penolakan ikut masuk, yang ditemukan cuma cerminan keputusan yang "
+        "sudah diambil.",
+    ),
 ]
 
 
 KEY_TAKEAWAYS = [
-    ("Beban utang paling menentukan",
-     "Aplikasi dengan DTI di atas 60% ditolak pada 91,5% kasus historis, jauh di atas rata-rata "
-     "portfolio 23,1%.", "91,5%", RED),
-    ("Penalti manufactured housing",
-     "Segmen manufactured housing hanya disetujui 43,1%, dan penaltinya melekat pada jenis "
-     "properti, bukan pada income pemohon.", "43,1%", AMBER),
-    ("Alasan lender sejalan dengan temuan",
-     "DTI adalah alasan penolakan yang paling sering dicatat lender, menguatkan pola yang "
-     "ditemukan association rule secara terpisah.", "28,2%", STEEL),
-    ("Selisih bertahan di kelompok aman",
-     "Selisih persetujuan antar lingkungan justru terlebar pada kelompok berisiko rendah, bukan "
-     "pada yang berisiko tinggi.", "12,1 poin", NAVY),
+    (
+        "Beban utang paling menentukan",
+        "Aplikasi dengan DTI di atas 60% ditolak pada 91,5% kasus historis, jauh di atas rata-rata "
+        "portfolio 23,1%.",
+        "91,5%",
+        RED,
+    ),
+    (
+        "Penalti manufactured housing",
+        "Segmen manufactured housing hanya disetujui 43,1%, dan penaltinya melekat pada jenis "
+        "properti, bukan pada income pemohon.",
+        "43,1%",
+        AMBER,
+    ),
+    (
+        "Alasan lender sejalan dengan temuan",
+        "DTI adalah alasan penolakan yang paling sering dicatat lender, menguatkan pola yang "
+        "ditemukan association rule secara terpisah.",
+        "28,2%",
+        STEEL,
+    ),
+    (
+        "Selisih terlebar di kelompok aman",
+        "Selisih persetujuan antar lingkungan justru paling besar pada kelompok berisiko rendah, "
+        "bukan pada yang berisiko tinggi.",
+        "12,1 poin",
+        NAVY,
+    ),
 ]
 
 RECOMMENDED_ACTIONS = [
-    ("Saring DTI di tahap intake",
-     "Periksa DTI sebelum underwriting penuh dan tawarkan rujukan alternatif untuk pemohon di "
-     "atas 60%."),
-    ("Sediakan produk manufactured housing",
-     "Bangun jalur chattel lending atau FHA Title I agar segmen ini tidak dipaksa lewat "
-     "underwriting konvensional."),
-    ("Audit fair lending di segmen DTI rendah",
-     "Telaah selisih persetujuan memakai data underwriting lengkap yang tidak tersedia di HMDA "
-     "publik."),
+    (
+        "Saring DTI di tahap intake",
+        "Periksa DTI sebelum underwriting penuh dan tawarkan rujukan alternatif untuk pemohon di "
+        "atas 60%.",
+    ),
+    (
+        "Sediakan produk manufactured housing",
+        "Bangun jalur chattel lending atau FHA Title I agar segmen ini tidak dipaksa lewat "
+        "underwriting konvensional.",
+    ),
+    (
+        "Audit fair lending di segmen DTI rendah",
+        "Telaah selisih persetujuan memakai data underwriting lengkap yang tidak tersedia di HMDA "
+        "publik.",
+    ),
 ]
 
 
 WHY_CLUSTER_FEATS = [
-    ("Kenapa keempat metode memakai fitur yang sama persis?",
-     "Supaya perbandingannya adil. Kalau tiap algoritma diberi fitur berbeda, selisih hasilnya "
-     "bisa jadi karena fiturnya, bukan karena algoritmanya. Dengan matriks yang identik, "
-     "perbedaan ARI dan silhouette murni berasal dari cara kerja masing-masing metode."),
-    ("Kenapa loan_amount dan property_value tidak ikut clustering?",
-     "Karena keduanya sudah terwakili lewat CLTV, yang merupakan rasio pinjaman terhadap nilai "
-     "properti. Memasukkan ketiganya membuat dimensi ukuran terhitung berkali-kali dan "
-     "mendominasi jarak. Keduanya tetap dipakai penuh di deteksi anomali, karena di sana "
-     "magnitudo mentah justru yang dicari."),
-    ("Kenapa ada fitur biner di antara fitur kontinu?",
-     "Karena karakteristik seperti investasi, refinance, manufactured, subordinate lien, dan "
-     "DTI tinggi itu penentu segmen yang kuat tetapi sifatnya ya atau tidak. Setelah "
-     "StandardScaler, keduanya berada pada skala yang sebanding sehingga tidak ada yang "
-     "mendominasi jarak."),
-    ("Kenapa clustering tidak memakai RobustScaler?",
-     "Karena tujuannya berbeda. Clustering butuh semua fitur setara, dan ekor ekstremnya sudah "
-     "ditangani lebih dulu lewat winsorize 1% dan 99%. Deteksi anomali justru mencari ekor itu, "
-     "jadi di sana dipakai RobustScaler yang median dan IQR-nya tidak terseret outlier."),
+    (
+        "Kenapa keempat metode memakai fitur yang sama persis?",
+        "Supaya perbandingannya adil. Kalau tiap algoritma diberi fitur berbeda, selisih hasilnya "
+        "bisa jadi karena fiturnya, bukan karena algoritmanya. Dengan matriks yang identik, "
+        "perbedaan ARI dan silhouette murni berasal dari cara kerja masing-masing metode.",
+    ),
+    (
+        "Kenapa loan_amount dan property_value tidak ikut clustering?",
+        "Karena keduanya sudah terwakili lewat CLTV, yang merupakan rasio pinjaman terhadap nilai "
+        "properti. Memasukkan ketiganya membuat dimensi ukuran terhitung berkali-kali dan "
+        "mendominasi jarak. Keduanya tetap dipakai penuh di deteksi anomali, karena di sana "
+        "magnitudo mentah justru yang dicari.",
+    ),
+    (
+        "Kenapa ada fitur biner di antara fitur kontinu?",
+        "Karena karakteristik seperti investasi, refinance, manufactured, subordinate lien, dan "
+        "DTI tinggi itu penentu segmen yang kuat tetapi sifatnya ya atau tidak. Setelah "
+        "StandardScaler, keduanya berada pada skala yang sebanding sehingga tidak ada yang "
+        "mendominasi jarak.",
+    ),
+    (
+        "Kenapa clustering tidak memakai RobustScaler?",
+        "Karena tujuannya berbeda. Clustering butuh semua fitur setara, dan ekor ekstremnya sudah "
+        "ditangani lebih dulu lewat winsorize 1% dan 99%. Deteksi anomali justru mencari ekor itu, "
+        "jadi di sana dipakai RobustScaler yang median dan IQR-nya tidak terseret outlier.",
+    ),
 ]
 
 
 WHY_PCA = [
-    ("Berapa komponen PCA yang dipakai?",
-     "Dua, yaitu PC1 dan PC2. Ruang fiturnya punya 9 dimensi, jadi tersedia 9 komponen, "
-     "tetapi yang digambar cuma dua."),
-    ("Kenapa dua, bukan jumlah yang menangkap 90% variansi?",
-     "Karena PCA di sini semata alat gambar, bukan bagian dari clustering. Layar cuma punya "
-     "dua sumbu, jadi dua komponen adalah batas yang bisa diplot. Kalau tujuannya menangkap "
-     "variansi, jumlahnya akan jauh berbeda: butuh 7 komponen untuk mencapai 86,2% dan 8 "
-     "komponen untuk 93,2%."),
-    ("Berapa variansi yang tertangkap dua komponen itu?",
-     "PC1 menjelaskan 16,7% dan PC2 15,2%, jadi totalnya cuma 31,9%. Sisanya 68,1% tidak "
-     "terlihat di gambar. Ini karena kesembilan fitur relatif tidak saling berkorelasi, "
-     "sejalan dengan audit VIF di Fase 1 yang menemukan nol fitur melewati ambang."),
-    ("Apa konsekuensinya untuk membaca scatter plot?",
-     "Dua cluster yang tampak bertumpuk di gambar belum tentu benar-benar bertumpuk, karena "
-     "bisa saja terpisah pada dimensi yang tidak digambar. Karena itu penilaian kualitas "
-     "cluster memakai silhouette, Davies-Bouldin, dan Calinski-Harabasz yang dihitung pada "
-     "seluruh 9 dimensi, bukan pada proyeksi 2 dimensi ini."),
-    ("Apakah clustering dijalankan pada hasil PCA?",
-     "Tidak. K-Means, DBSCAN, Ward, dan CLARANS semuanya bekerja pada matriks 9 fitur yang "
-     "penuh. PCA baru diterapkan sesudahnya, hanya untuk menempatkan titik-titik di gambar."),
+    (
+        "Berapa komponen PCA yang dipakai?",
+        "Dua, yaitu PC1 dan PC2. Ruang fiturnya punya 9 dimensi, jadi tersedia 9 komponen, "
+        "tetapi yang digambar cuma dua.",
+    ),
+    (
+        "Kenapa dua, bukan jumlah yang menangkap 90% variansi?",
+        "Karena PCA di sini semata alat gambar, bukan bagian dari clustering. Layar cuma punya "
+        "dua sumbu, jadi dua komponen adalah batas yang bisa diplot. Kalau tujuannya menangkap "
+        "variansi, jumlahnya akan jauh berbeda: butuh 7 komponen untuk mencapai 86,2% dan 8 "
+        "komponen untuk 93,2%.",
+    ),
+    (
+        "Berapa variansi yang tertangkap dua komponen itu?",
+        "PC1 menjelaskan 16,7% dan PC2 15,2%, jadi totalnya cuma 31,9%. Sisanya 68,1% tidak "
+        "terlihat di gambar. Ini karena kesembilan fitur relatif tidak saling berkorelasi, "
+        "sejalan dengan audit VIF di Fase 1 yang menemukan nol fitur melewati ambang.",
+    ),
+    (
+        "Apa konsekuensinya untuk membaca scatter plot?",
+        "Dua cluster yang tampak bertumpuk di gambar belum tentu benar-benar bertumpuk, karena "
+        "bisa saja terpisah pada dimensi yang tidak digambar. Karena itu penilaian kualitas "
+        "cluster memakai silhouette, Davies-Bouldin, dan Calinski-Harabasz yang dihitung pada "
+        "seluruh 9 dimensi, bukan pada proyeksi 2 dimensi ini.",
+    ),
+    (
+        "Apakah clustering dijalankan pada hasil PCA?",
+        "Tidak. K-Means, DBSCAN, Ward, dan CLARANS semuanya bekerja pada matriks 9 fitur yang "
+        "penuh. PCA baru diterapkan sesudahnya, hanya untuk menempatkan titik-titik di gambar.",
+    ),
 ]
 
 
@@ -3494,21 +3659,42 @@ def _cluster_feats_details(method):
     comes from the algorithm rather than from the inputs.
     """
     name, scope = CLUSTER_SCOPE.get(method, ("Metode ini", "sampel"))
-    cont = ["income", "combined_loan_to_value_ratio",
-            "tract_minority_population_percent", "tract_to_msa_income_percentage"]
-    flags = ["_is_investment", "_is_refinance", "_is_manufactured",
-             "_is_subordinate", "_is_high_dti"]
+    cont = [
+        "income",
+        "combined_loan_to_value_ratio",
+        "tract_minority_population_percent",
+        "tract_to_msa_income_percentage",
+    ]
+    flags = [
+        "_is_investment",
+        "_is_refinance",
+        "_is_manufactured",
+        "_is_subordinate",
+        "_is_high_dti",
+    ]
     df = pd.DataFrame(
-        [{"Fitur": c, "Tipe": "kontinu",
-          "Perlakuan": "winsorize 1/99% lalu StandardScaler"} for c in cont]
+        [
+            {
+                "Fitur": c,
+                "Tipe": "kontinu",
+                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
+            }
+            for c in cont
+        ]
         + [{"Fitur": f, "Tipe": "biner", "Perlakuan": "StandardScaler"} for f in flags]
     )
     return html.Details(
         [
             html.Summary(
                 "Fitur yang dipakai dan cara penskalaannya",
-                style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
-                       "color": STEEL, "padding": "4px 0", "userSelect": "none"},
+                style={
+                    "cursor": "pointer",
+                    "fontWeight": "700",
+                    "fontSize": "12.5px",
+                    "color": STEEL,
+                    "padding": "4px 0",
+                    "userSelect": "none",
+                },
             ),
             html.Div(
                 [
@@ -3516,8 +3702,12 @@ def _cluster_feats_details(method):
                         "Kesembilan fitur berikut dipakai keempat metode clustering, dengan "
                         "perlakuan penskalaan yang sama. Yang berbeda cuma cakupan barisnya, dan "
                         "itu ada di tabel perbandingan.",
-                        style={"fontSize": "12px", "color": INK, "margin": "0 0 10px",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "margin": "0 0 10px",
+                            "lineHeight": "1.6",
+                        },
                     ),
                     _table(df),
                     html.P(
@@ -3526,73 +3716,133 @@ def _cluster_feats_details(method):
                         "ditangani lebih dulu lewat winsorize. RobustScaler dipakai di Fase 4, "
                         "karena di sana outlier justru yang dicari sehingga penskalaannya tidak "
                         "boleh ikut terseret nilai ekstrem.",
-                        style={"fontSize": "11.5px", "color": MUTE, "margin": "10px 0 0",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "11.5px",
+                            "color": MUTE,
+                            "margin": "10px 0 0",
+                            "lineHeight": "1.6",
+                        },
                     ),
                     html.P(
                         "loan_amount dan property_value sengaja tidak ikut, karena keduanya sudah "
                         "terwakili lewat CLTV. Memasukkan ketiganya membuat dimensi ukuran "
                         "terhitung berulang dan mendominasi jarak. Keduanya tetap dipakai penuh "
                         "di matriks anomali Fase 4.",
-                        style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 0",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "11.5px",
+                            "color": MUTE,
+                            "margin": "8px 0 0",
+                            "lineHeight": "1.6",
+                        },
                     ),
                 ],
                 style={"marginTop": "12px"},
             ),
         ],
-        style={"background": "#f8fafd", "border": f"1px solid {BORDER}",
-               "borderRadius": "10px", "padding": "12px 16px", "marginBottom": "16px"},
+        style={
+            "background": "#f8fafd",
+            "border": f"1px solid {BORDER}",
+            "borderRadius": "10px",
+            "padding": "12px 16px",
+            "marginBottom": "16px",
+        },
     )
 
 
 WHY_RULE_FEATS = [
-    ("Kenapa fiturnya kategorikal semua, tidak ada yang kontinu?",
-     "Karena Apriori bekerja pada item yang ada atau tidak ada, bukan pada angka. Fitur "
-     "kontinu seperti income dan besar loan lebih dulu diubah jadi band, sehingga "
-     "income=<30k bisa diperlakukan sebagai satu item."),
-    ("Kenapa fiturnya jauh lebih banyak dari clustering?",
-     "Karena tujuannya beda. Clustering butuh sedikit dimensi supaya jaraknya bermakna, "
-     "sedangkan association rule justru mencari kombinasi kondisi, jadi makin banyak kandidat "
-     "item makin kaya polanya. Ledakan kombinasinya ditahan oleh minimum support 2% dan "
-     "batas panjang itemset maksimal 3."),
-    ("Kenapa fitur demografis ikut di sini padahal tidak dipakai di What-If?",
-     "Supaya bisa diuji, bukan supaya dipakai menilai. Dengan memasukkan ras, etnis, dan "
-     "gender sebagai kandidat item, kita bisa melihat apakah menambahkannya ke aturan DTI "
-     "meningkatkan daya pisah. Hasilnya tidak, karena semua varian itu gugur di improvement "
-     "filter. Justru ketidakhadirannya di aturan final yang jadi temuan."),
-    ("Kenapa tidak ada penskalaan di sini?",
-     "Karena tidak ada jarak yang dihitung. Apriori cuma menghitung seberapa sering item "
-     "muncul bersama, jadi StandardScaler maupun RobustScaler tidak relevan. Yang berperan "
-     "sebagai gantinya adalah binning."),
+    (
+        "Kenapa fiturnya kategorikal semua, tidak ada yang kontinu?",
+        "Karena Apriori bekerja pada item yang ada atau tidak ada, bukan pada angka. Fitur "
+        "kontinu seperti income dan besar loan lebih dulu diubah jadi band, sehingga "
+        "income=<30k bisa diperlakukan sebagai satu item.",
+    ),
+    (
+        "Kenapa fiturnya jauh lebih banyak dari clustering?",
+        "Karena tujuannya beda. Clustering butuh sedikit dimensi supaya jaraknya bermakna, "
+        "sedangkan association rule justru mencari kombinasi kondisi, jadi makin banyak kandidat "
+        "item makin kaya polanya. Ledakan kombinasinya ditahan oleh minimum support 2% dan "
+        "batas panjang itemset maksimal 3.",
+    ),
+    (
+        "Kenapa fitur demografis ikut di sini padahal tidak dipakai di What-If?",
+        "Supaya bisa diuji, bukan supaya dipakai menilai. Dengan memasukkan ras, etnis, dan "
+        "gender sebagai kandidat item, kita bisa melihat apakah menambahkannya ke aturan DTI "
+        "meningkatkan daya pisah. Hasilnya tidak, karena semua varian itu gugur di improvement "
+        "filter. Justru ketidakhadirannya di aturan final yang jadi temuan.",
+    ),
+    (
+        "Kenapa tidak ada penskalaan di sini?",
+        "Karena tidak ada jarak yang dihitung. Apriori cuma menghitung seberapa sering item "
+        "muncul bersama, jadi StandardScaler maupun RobustScaler tidak relevan. Yang berperan "
+        "sebagai gantinya adalah binning.",
+    ),
 ]
 
 
 def _rule_features_details():
     """Feature list behind the transaction matrix used for Apriori."""
     groups = [
-        ("Profil pemohon", ["derived_race", "derived_ethnicity", "derived_sex",
-                            "applicant_age", "income_band"]),
-        ("Karakteristik loan", ["loan_type", "loan_purpose", "lien_status", "preapproval",
-                                "conforming_loan_limit", "loan_amount_band"]),
-        ("Properti & agunan", ["occupancy_type", "construction_method", "total_units",
-                               "property_value_band", "cltv_band"]),
+        (
+            "Profil pemohon",
+            [
+                "derived_race",
+                "derived_ethnicity",
+                "derived_sex",
+                "applicant_age",
+                "income_band",
+            ],
+        ),
+        (
+            "Karakteristik loan",
+            [
+                "loan_type",
+                "loan_purpose",
+                "lien_status",
+                "preapproval",
+                "conforming_loan_limit",
+                "loan_amount_band",
+            ],
+        ),
+        (
+            "Properti & agunan",
+            [
+                "occupancy_type",
+                "construction_method",
+                "total_units",
+                "property_value_band",
+                "cltv_band",
+            ],
+        ),
         ("Beban utang", ["debt_to_income_ratio"]),
         ("Konteks lingkungan", ["tract_income_cat", "tract_minority_cat"]),
     ]
     df = pd.DataFrame(
-        [{"Kelompok": g, "Fitur": f,
-          "Perlakuan": ("sudah band, dipakai apa adanya"
-                        if f.endswith(("_band", "_cat")) or f == "debt_to_income_ratio"
-                        else "kategorikal, dipakai apa adanya")}
-         for g, feats in groups for f in feats]
+        [
+            {
+                "Kelompok": g,
+                "Fitur": f,
+                "Perlakuan": (
+                    "sudah band, dipakai apa adanya"
+                    if f.endswith(("_band", "_cat")) or f == "debt_to_income_ratio"
+                    else "kategorikal, dipakai apa adanya"
+                ),
+            }
+            for g, feats in groups
+            for f in feats
+        ]
     )
     return html.Details(
         [
             html.Summary(
                 "Fitur yang dipakai association rules dan perlakuannya",
-                style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
-                       "color": STEEL, "padding": "4px 0", "userSelect": "none"},
+                style={
+                    "cursor": "pointer",
+                    "fontWeight": "700",
+                    "fontSize": "12.5px",
+                    "color": STEEL,
+                    "padding": "4px 0",
+                    "userSelect": "none",
+                },
             ),
             html.Div(
                 [
@@ -3601,8 +3851,12 @@ def _rule_features_details():
                         "transaksi one-hot pada 67.827 aplikasi berkeputusan. Item yang muncul "
                         "di bawah 2% atau di atas 95% dibuang lebih dulu, menyisakan 82 item "
                         "yang benar-benar ditambang.",
-                        style={"fontSize": "12px", "color": INK, "margin": "0 0 10px",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "12px",
+                            "color": INK,
+                            "margin": "0 0 10px",
+                            "lineHeight": "1.6",
+                        },
                     ),
                     _table(df),
                     html.P(
@@ -3610,45 +3864,109 @@ def _rule_features_details():
                         "Fitur kontinu ditangani lewat binning, bukan StandardScaler. Fitur "
                         "pasca-keputusan seperti interest rate dan biaya tetap dikecualikan, "
                         "sama seperti di clustering dan deteksi anomali.",
-                        style={"fontSize": "11.5px", "color": MUTE, "margin": "10px 0 0",
-                               "lineHeight": "1.6"},
+                        style={
+                            "fontSize": "11.5px",
+                            "color": MUTE,
+                            "margin": "10px 0 0",
+                            "lineHeight": "1.6",
+                        },
                     ),
                 ],
                 style={"marginTop": "12px"},
             ),
         ],
-        style={"background": "#f8fafd", "border": f"1px solid {BORDER}",
-               "borderRadius": "10px", "padding": "12px 16px", "marginBottom": "16px"},
+        style={
+            "background": "#f8fafd",
+            "border": f"1px solid {BORDER}",
+            "borderRadius": "10px",
+            "padding": "12px 16px",
+            "marginBottom": "16px",
+        },
     )
 
 
 def _cluster_features_panel():
     """Exactly which features each matrix uses, and how each is scaled."""
-    clust = pd.DataFrame([
-        {"Fitur": "income", "Tipe": "kontinu", "Perlakuan": "winsorize 1/99% lalu StandardScaler"},
-        {"Fitur": "combined_loan_to_value_ratio", "Tipe": "kontinu", "Perlakuan": "winsorize 1/99% lalu StandardScaler"},
-        {"Fitur": "tract_minority_population_percent", "Tipe": "kontinu", "Perlakuan": "winsorize 1/99% lalu StandardScaler"},
-        {"Fitur": "tract_to_msa_income_percentage", "Tipe": "kontinu", "Perlakuan": "winsorize 1/99% lalu StandardScaler"},
-        {"Fitur": "_is_investment", "Tipe": "biner", "Perlakuan": "StandardScaler"},
-        {"Fitur": "_is_refinance", "Tipe": "biner", "Perlakuan": "StandardScaler"},
-        {"Fitur": "_is_manufactured", "Tipe": "biner", "Perlakuan": "StandardScaler"},
-        {"Fitur": "_is_subordinate", "Tipe": "biner", "Perlakuan": "StandardScaler"},
-        {"Fitur": "_is_high_dti", "Tipe": "biner", "Perlakuan": "StandardScaler"},
-    ])
-    anom = pd.DataFrame([
-        {"Fitur": f, "Perlakuan": "RobustScaler, nilai asli tanpa winsorize"}
-        for f in ["income", "loan_amount", "property_value",
-                  "combined_loan_to_value_ratio", "loan_term",
-                  "tract_minority_population_percent",
-                  "tract_to_msa_income_percentage",
-                  "ffiec_msa_md_median_family_income"]
-    ])
-    scope = pd.DataFrame([
-        {"Metode": "K-Means", "Fitur": "9 fitur yang sama", "Penskalaan": "StandardScaler", "Cakupan": "Seluruh 99.995 baris"},
-        {"Metode": "DBSCAN", "Fitur": "9 fitur yang sama", "Penskalaan": "StandardScaler", "Cakupan": "Sampel 20.000"},
-        {"Metode": "Hierarchical (Ward)", "Fitur": "9 fitur yang sama", "Penskalaan": "StandardScaler", "Cakupan": "Sampel 4.000"},
-        {"Metode": "CLARANS", "Fitur": "9 fitur yang sama", "Penskalaan": "StandardScaler", "Cakupan": "Sampel 4.000"},
-    ])
+    clust = pd.DataFrame(
+        [
+            {
+                "Fitur": "income",
+                "Tipe": "kontinu",
+                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
+            },
+            {
+                "Fitur": "combined_loan_to_value_ratio",
+                "Tipe": "kontinu",
+                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
+            },
+            {
+                "Fitur": "tract_minority_population_percent",
+                "Tipe": "kontinu",
+                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
+            },
+            {
+                "Fitur": "tract_to_msa_income_percentage",
+                "Tipe": "kontinu",
+                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
+            },
+            {"Fitur": "_is_investment", "Tipe": "biner", "Perlakuan": "StandardScaler"},
+            {"Fitur": "_is_refinance", "Tipe": "biner", "Perlakuan": "StandardScaler"},
+            {
+                "Fitur": "_is_manufactured",
+                "Tipe": "biner",
+                "Perlakuan": "StandardScaler",
+            },
+            {
+                "Fitur": "_is_subordinate",
+                "Tipe": "biner",
+                "Perlakuan": "StandardScaler",
+            },
+            {"Fitur": "_is_high_dti", "Tipe": "biner", "Perlakuan": "StandardScaler"},
+        ]
+    )
+    anom = pd.DataFrame(
+        [
+            {"Fitur": f, "Perlakuan": "RobustScaler, nilai asli tanpa winsorize"}
+            for f in [
+                "income",
+                "loan_amount",
+                "property_value",
+                "combined_loan_to_value_ratio",
+                "loan_term",
+                "tract_minority_population_percent",
+                "tract_to_msa_income_percentage",
+                "ffiec_msa_md_median_family_income",
+            ]
+        ]
+    )
+    scope = pd.DataFrame(
+        [
+            {
+                "Metode": "K-Means",
+                "Fitur": "9 fitur yang sama",
+                "Penskalaan": "StandardScaler",
+                "Cakupan": "Seluruh 99.995 baris",
+            },
+            {
+                "Metode": "DBSCAN",
+                "Fitur": "9 fitur yang sama",
+                "Penskalaan": "StandardScaler",
+                "Cakupan": "Sampel 20.000",
+            },
+            {
+                "Metode": "Hierarchical (Ward)",
+                "Fitur": "9 fitur yang sama",
+                "Penskalaan": "StandardScaler",
+                "Cakupan": "Sampel 4.000",
+            },
+            {
+                "Metode": "CLARANS",
+                "Fitur": "9 fitur yang sama",
+                "Penskalaan": "StandardScaler",
+                "Cakupan": "Sampel 4.000",
+            },
+        ]
+    )
     return panel(
         "Fitur yang dipakai tiap metode dan cara penskalaannya",
         [
@@ -3659,11 +3977,15 @@ def _cluster_features_panel():
                 style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
             ),
             _table(scope),
-            html.H4("Matriks clustering: 9 fitur",
-                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            html.H4(
+                "Matriks clustering: 9 fitur",
+                style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"},
+            ),
             _table(clust),
-            html.H4("Matriks anomali: 8 fitur",
-                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            html.H4(
+                "Matriks anomali: 8 fitur",
+                style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"},
+            ),
             _table(anom),
             why(WHY_CLUSTER_FEATS),
         ],
@@ -3677,18 +3999,40 @@ def _key_takeaways_panel():
     cards = [
         html.Div(
             [
-                html.Div(num, style={"fontSize": "22px", "fontWeight": "800",
-                                     "color": color, "marginBottom": "2px"}),
-                html.Div(title, style={"fontSize": "13px", "fontWeight": "700",
-                                       "color": NAVY, "marginBottom": "6px"}),
-                html.Div(body, style={"fontSize": "11.5px", "color": INK,
-                                      "lineHeight": "1.5"}),
+                html.Div(
+                    num,
+                    style={
+                        "fontSize": "22px",
+                        "fontWeight": "800",
+                        "color": color,
+                        "marginBottom": "2px",
+                    },
+                ),
+                html.Div(
+                    title,
+                    style={
+                        "fontSize": "13px",
+                        "fontWeight": "700",
+                        "color": NAVY,
+                        "marginBottom": "6px",
+                    },
+                ),
+                html.Div(
+                    body,
+                    style={"fontSize": "11.5px", "color": INK, "lineHeight": "1.5"},
+                ),
             ],
             className="hmda-card",
-            style={"flex": "1", "minWidth": "220px", "background": CARD,
-                   "borderRadius": "14px", "padding": "14px 16px",
-                   "boxShadow": SOFT_SHADOW, "border": f"1px solid {BORDER}",
-                   "borderTop": f"3px solid {color}"},
+            style={
+                "flex": "1",
+                "minWidth": "220px",
+                "background": CARD,
+                "borderRadius": "14px",
+                "padding": "14px 16px",
+                "boxShadow": SOFT_SHADOW,
+                "border": f"1px solid {BORDER}",
+                "borderTop": f"3px solid {color}",
+            },
         )
         for title, body, num, color in KEY_TAKEAWAYS
     ]
@@ -3697,11 +4041,23 @@ def _key_takeaways_panel():
             [
                 html.Span(f"{i}. ", style={"fontWeight": "800", "color": STEEL}),
                 html.Span(title, style={"fontWeight": "700", "color": NAVY}),
-                html.Div(body, style={"fontSize": "12px", "color": INK,
-                                      "lineHeight": "1.55", "marginTop": "3px"}),
+                html.Div(
+                    body,
+                    style={
+                        "fontSize": "12px",
+                        "color": INK,
+                        "lineHeight": "1.55",
+                        "marginTop": "3px",
+                    },
+                ),
             ],
-            style={"padding": "10px 12px", "background": BG, "borderRadius": "10px",
-                   "marginBottom": "8px", "fontSize": "12.5px"},
+            style={
+                "padding": "10px 12px",
+                "background": BG,
+                "borderRadius": "10px",
+                "marginBottom": "8px",
+                "fontSize": "12.5px",
+            },
         )
         for i, (title, body) in enumerate(RECOMMENDED_ACTIONS, 1)
     ]
@@ -3709,8 +4065,12 @@ def _key_takeaways_panel():
         [
             panel(
                 "Key Takeaways",
-                [html.Div(cards, style={"display": "flex", "gap": "14px",
-                                        "flexWrap": "wrap"})],
+                [
+                    html.Div(
+                        cards,
+                        style={"display": "flex", "gap": "14px", "flexWrap": "wrap"},
+                    )
+                ],
                 sub="Temuan yang didukung lebih dari satu fase. Seluruhnya asosiasi historis, "
                 "bukan hubungan sebab-akibat.",
             ),
@@ -3725,38 +4085,114 @@ def _key_takeaways_panel():
 
 
 WHY_SCALER_MAP = [
-    ("Kenapa IQR dan Z-score tidak diskalakan sama sekali?",
-     "Karena keduanya sudah tidak bergantung pada skala. IQR bekerja pada kuartil per fitur, "
-     "dan Z-score memang membagi dengan standar deviasi fitur itu sendiri. Menskalakan lebih "
-     "dulu tidak mengubah baris mana yang ditandai, jadi cuma menambah langkah tanpa manfaat."),
-    ("Kenapa Isolation Forest dan LOF pakai RobustScaler?",
-     "Karena keduanya menghitung jarak atau partisi antar fitur, jadi skalanya harus setara. "
-     "Bedanya dengan clustering, di sini penskalaannya tidak boleh terseret outlier yang justru "
-     "sedang dicari. Mean dan standar deviasi tertarik nilai ekstrem sehingga outlier "
-     "menggelembungkan std dan skornya sendiri malah mengecil; median dan IQR tidak begitu."),
-    ("Kenapa DBSCAN-noise memakai matriks clustering, bukan matriks anomali?",
-     "Karena titik noise itu produk sampingan DBSCAN di Fase 2, dan DBSCAN dijalankan untuk "
-     "membentuk cluster. Konsekuensinya detektor kelima ini satu-satunya yang bekerja pada data "
-     "yang sudah di-winsorize, jadi paling tidak sensitif terhadap ekor distribusi. Itu bisa "
-     "diterima karena perannya melengkapi LOF pada sisi kontekstual, bukan menangkap magnitudo "
-     "ekstrem yang memang sudah ditangani tiga detektor global."),
-    ("Kenapa profil grup kolektif juga pakai RobustScaler?",
-     "Karena unit yang dibandingkan adalah median dan IQR antar kelompok, dan sebagian kelompok "
-     "berukuran kecil sehingga ringkasannya mudah bergeser. RobustScaler menjaga kelompok "
-     "ekstrem tetap menonjol alih-alih menekan skala seluruh kelompok lain."),
+    (
+        "Kenapa IQR dan Z-score tidak diskalakan sama sekali?",
+        "Karena keduanya sudah tidak bergantung pada skala. IQR bekerja pada kuartil per fitur, "
+        "dan Z-score memang membagi dengan standar deviasi fitur itu sendiri. Menskalakan lebih "
+        "dulu tidak mengubah baris mana yang ditandai, jadi cuma menambah langkah tanpa manfaat.",
+    ),
+    (
+        "Kenapa Isolation Forest dan LOF pakai RobustScaler?",
+        "Karena keduanya menghitung jarak atau partisi antar fitur, jadi skalanya harus setara. "
+        "Bedanya dengan clustering, di sini penskalaannya tidak boleh terseret outlier yang justru "
+        "sedang dicari. Mean dan standar deviasi tertarik nilai ekstrem sehingga outlier "
+        "menggelembungkan std dan skornya sendiri malah mengecil; median dan IQR tidak begitu.",
+    ),
+    (
+        "Kenapa DBSCAN-noise memakai matriks clustering, bukan matriks anomali?",
+        "Karena titik noise itu produk sampingan DBSCAN di Fase 2, dan DBSCAN dijalankan untuk "
+        "membentuk cluster. Konsekuensinya detektor kelima ini satu-satunya yang bekerja pada data "
+        "yang sudah di-winsorize, jadi paling tidak sensitif terhadap ekor distribusi. Itu bisa "
+        "diterima karena perannya melengkapi LOF pada sisi kontekstual, bukan menangkap magnitudo "
+        "ekstrem yang memang sudah ditangani tiga detektor global.",
+    ),
+    (
+        "Kenapa profil grup kolektif juga pakai RobustScaler?",
+        "Karena unit yang dibandingkan adalah median dan IQR antar kelompok, dan sebagian kelompok "
+        "berukuran kecil sehingga ringkasannya mudah bergeser. RobustScaler menjaga kelompok "
+        "ekstrem tetap menonjol alih-alih menekan skala seluruh kelompok lain.",
+    ),
 ]
+
+
+def _collective_taxonomy_card():
+    """Fourth taxonomy card: the collective class, counted in groups rather than rows.
+
+    Deliberately shows the group count, not a row count. The first three cards count
+    individual records; a collective outlier is a property of a group, so mixing the two
+    units in one row is what made the earlier version of this card misleading.
+    """
+    if collective_summary is None or not len(collective_summary):
+        return html.Div()
+    s = collective_summary.iloc[0]
+    return html.Div(
+        [
+            html.Div(
+                "OUTLIER KOLEKTIF",
+                style={"fontWeight": "800", "color": AMBER, "fontSize": "12px",
+                       "letterSpacing": "0.5px"},
+            ),
+            html.Div(
+                f"{int(s['flagged_groups'])} kelompok",
+                style={"fontSize": "24px", "fontWeight": "800", "color": NAVY,
+                       "margin": "4px 0"},
+            ),
+            html.Div(
+                f"{int(s['pure_collective_groups'])} di antaranya pure collective",
+                style={"fontSize": "11px", "color": MUTE, "marginBottom": "8px"},
+            ),
+            html.Div(
+                "Satuannya kelompok, bukan baris, karena kelima detektor menilai baris satu "
+                "per satu dan tidak bisa melihat kelas ini. Yang paling kuat buktinya adalah "
+                "manufactured housing: kelompoknya menyimpang padahal cuma 8,7% anggotanya "
+                "pernah ditandai detektor individual. Sisanya didominasi yurisdiksi kecil, "
+                "jadi tidak diklaim sebagai temuan.",
+                style={"fontSize": "11.5px", "color": INK, "lineHeight": "1.5"},
+            ),
+        ],
+        className="hmda-card",
+        style={"flex": "1", "minWidth": "230px", "background": CARD,
+               "borderRadius": "14px", "padding": "14px 16px", "boxShadow": SOFT_SHADOW,
+               "border": f"1px solid {BORDER}", "borderTop": f"3px solid {AMBER}"},
+    )
 
 
 def _scaler_map_panel():
     """Which matrix and scaler each detector actually consumes."""
-    df = pd.DataFrame([
-        {"Metode": "IQR", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
-        {"Metode": "Z-score", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
-        {"Metode": "Isolation Forest", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
-        {"Metode": "Local Outlier Factor", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
-        {"Metode": "DBSCAN-noise", "Data": "matriks clustering (9 fitur)", "Penskalaan": "winsorize + StandardScaler"},
-        {"Metode": "Isolation Forest tingkat grup", "Data": "profil median & IQR per grup", "Penskalaan": "RobustScaler"},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "Metode": "IQR",
+                "Data": "nilai asli, tanpa matriks",
+                "Penskalaan": "tidak ada, sudah scale-invariant",
+            },
+            {
+                "Metode": "Z-score",
+                "Data": "nilai asli, tanpa matriks",
+                "Penskalaan": "tidak ada, sudah scale-invariant",
+            },
+            {
+                "Metode": "Isolation Forest",
+                "Data": "matriks anomali (8 fitur)",
+                "Penskalaan": "RobustScaler",
+            },
+            {
+                "Metode": "Local Outlier Factor",
+                "Data": "matriks anomali (8 fitur)",
+                "Penskalaan": "RobustScaler",
+            },
+            {
+                "Metode": "DBSCAN-noise",
+                "Data": "matriks clustering (9 fitur)",
+                "Penskalaan": "winsorize + StandardScaler",
+            },
+            {
+                "Metode": "Isolation Forest tingkat grup",
+                "Data": "profil median & IQR per grup",
+                "Penskalaan": "RobustScaler",
+            },
+        ]
+    )
     return panel(
         "Matriks dan penskalaan tiap detektor",
         [
@@ -3768,7 +4204,7 @@ def _scaler_map_panel():
             _table(df),
             html.Div(
                 [
-                    html.B("Catatan kejujuran. ", style={"fontSize": "12px", "color": NAVY}),
+                    html.B("Catatan. ", style={"fontSize": "12px", "color": NAVY}),
                     html.Span(
                         "DBSCAN-noise mewarisi matriks clustering, sehingga satu-satunya detektor "
                         "yang bekerja pada data yang sudah di-winsorize. Artinya klaim bahwa "
@@ -3778,8 +4214,13 @@ def _scaler_map_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
-                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+                style={
+                    "background": "#fff8e8",
+                    "border": "1px solid #f3d7a0",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "margin": "14px 0",
+                },
             ),
             why(WHY_SCALER_MAP),
         ],
@@ -3800,22 +4241,27 @@ def _collective_groups_panel():
 
     d = collective_groups.copy()
     non_state = d[~d["group_spec"].str.startswith("state_")]
-    tbl = pd.DataFrame({
-        "Kelompok": non_state["group_values"],
-        "Skema": non_state["group_spec"],
-        "Anggota": non_state["n"].map(lambda v: f"{int(v):,}"),
-        "Skor": non_state["collective_iso_score"].map(lambda v: f"{v:.3f}"),
-        "Anggota ditandai individual": non_state["member_individual_flag_rate"].map(
-            lambda v: f"{v*100:.0f}%"),
-    })
+    tbl = pd.DataFrame(
+        {
+            "Kelompok": non_state["group_values"],
+            "Skema": non_state["group_spec"],
+            "Anggota": non_state["n"].map(lambda v: f"{int(v):,}"),
+            "Skor": non_state["collective_iso_score"].map(lambda v: f"{v:.3f}"),
+            "Anggota ditandai individual": non_state["member_individual_flag_rate"].map(
+                lambda v: f"{v*100:.0f}%"
+            ),
+        }
+    )
 
     return panel(
         "Anomali kolektif tingkat grup",
         [
             html.Div(
                 [
-                    html.B("Temuan: manufactured housing muncul lagi sebagai pola kolektif. ",
-                           style={"fontSize": "12.5px", "color": NAVY}),
+                    html.B(
+                        "Temuan: manufactured housing muncul lagi sebagai pola kolektif. ",
+                        style={"fontSize": "12.5px", "color": NAVY},
+                    ),
                     html.Span(
                         "Dari 4 kelompok yang ditandai di luar skema geografis, 3 di antaranya "
                         "adalah manufactured housing. Ini konfirmasi independen atas segmen yang "
@@ -3827,14 +4273,21 @@ def _collective_groups_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={"background": "#eefaf1", "border": "1px solid #b7e4c7",
-                       "borderRadius": "10px", "padding": "12px 14px", "marginBottom": "14px"},
+                style={
+                    "background": "#eefaf1",
+                    "border": "1px solid #b7e4c7",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "marginBottom": "14px",
+                },
             ),
             _table(tbl),
             html.Div(
                 [
-                    html.B("Yang sengaja tidak diklaim sebagai temuan. ",
-                           style={"fontSize": "12px", "color": NAVY}),
+                    html.B(
+                        "Yang sengaja tidak diklaim sebagai temuan. ",
+                        style={"fontSize": "12px", "color": NAVY},
+                    ),
                     html.Span(
                         "29 kelompok lain berbasis negara bagian, dan 15 di antaranya atau 52% "
                         "adalah yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, atau state "
@@ -3844,12 +4297,19 @@ def _collective_groups_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
-                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+                style={
+                    "background": "#fff8e8",
+                    "border": "1px solid #f3d7a0",
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "margin": "14px 0",
+                },
             ),
             html.Div(
                 [
-                    html.B("Insight bisnis: ", style={"fontSize": "12px", "color": NAVY}),
+                    html.B(
+                        "Insight bisnis: ", style={"fontSize": "12px", "color": NAVY}
+                    ),
                     html.Span(
                         "manufactured housing perlu jalur produk sendiri, bukan pengetatan "
                         "underwriting. Polanya konsisten di tingkat segmen maupun kelompok, dan "
@@ -3858,8 +4318,12 @@ def _collective_groups_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={"background": BG, "borderRadius": "10px", "padding": "12px 14px",
-                       "marginBottom": "14px"},
+                style={
+                    "background": BG,
+                    "borderRadius": "10px",
+                    "padding": "12px 14px",
+                    "marginBottom": "14px",
+                },
             ),
             why(WHY_COLLECTIVE_GROUPS),
         ],
@@ -4237,7 +4701,7 @@ def _clustering_comparison_panel():
                         },
                     ),
                     html.P(
-                        "Catatan kejujuran metrik: baris DBSCAN diukur pada sampel 20.000 dan "
+                        "Catatan metrik: baris DBSCAN diukur pada sampel 20.000 dan "
                         "mengecualikan noise, jadi angkanya tidak sebanding langsung dengan baris "
                         'sampel 4.000. Baris "K-Means (pada sampel 4.000)" sengaja disertakan '
                         "sebagai pembanding setara.",
@@ -4734,7 +5198,11 @@ def render(tab):
                             "dan CLARANS dijalankan pada sampel sebagai validasi silang. Karena "
                             "fitur dan perlakuannya identik, perbedaan hasil di bawah murni "
                             "berasal dari algoritmanya.",
-                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                            style={
+                                "fontSize": "12px",
+                                "color": INK,
+                                "margin": "0 0 12px",
+                            },
                         ),
                         why(WHY_METHODS, "Kenapa empat metode ini?"),
                         _cluster_feats_details("shared"),
@@ -4912,9 +5380,10 @@ def render(tab):
                     "Taksonomi outlier: global, kontekstual, dan kolektif",
                     [
                         html.P(
-                            "Teori data-mining membagi outlier menjadi tiga jenis. Kelima detektor pipeline ini "
-                            "terbagi rapi ke dalam dua di antaranya, dan itu sendiri temuan yang layak disajikan: "
-                            "kedua filosofi deteksi menangkap rekaman yang jauh berbeda.",
+                            "Teori data-mining membagi outlier menjadi tiga jenis, dan ketiganya ada di sini. "
+                            "Tiga kartu pertama dihitung dalam satuan baris; kartu kolektif dihitung dalam "
+                            "satuan kelompok, karena kelas itu memang properti kelompok dan tidak bisa dilihat "
+                            "oleh detektor yang menilai baris satu per satu.",
                             style={
                                 "fontSize": "12px",
                                 "color": INK,
@@ -5085,6 +5554,7 @@ def render(tab):
                                         "borderTop": f"3px solid {TAXONOMY_COLOR['Both (global + contextual)']}",
                                     },
                                 ),
+                                _collective_taxonomy_card(),
                             ],
                             style={
                                 "display": "flex",
@@ -5222,15 +5692,15 @@ def render(tab):
                     sub="Bandingkan tingkat persetujuan antar kelompok demografis dan tingkat minoritas tract.",
                 ),
                 panel(
-                    "Apakah selisih bertahan setelah mengontrol DTI?",
+                    "Selisih persetujuan setelah beban utang disamakan",
                     [graph(fig_dti_geo_gap())],
-                    sub="Perbandingan yang sama, dipisah menurut prediktor penolakan terkuat dalam dataset.",
+                    sub="Perbandingan yang sama, dipisah menurut prediktor penolakan terkuat dalam dataset. Kalau selisihnya mengecil, artinya beban utang menjelaskannya; kalau tetap, ada faktor lain.",
                 ),
                 panel(
-                    "Persetujuan menurut gender, dikontrol DTI",
-                    [graph(fig_gender_gap())],
-                    sub="Perlakuan yang sama seperti analisis tract: selisih mentah baru bermakna "
-                    "setelah beban utang yang setara dibandingkan dengan yang setara.",
+                    "Persetujuan menurut gender, khusus pemohon tunggal",
+                    [graph(fig_gender_gap()), _gender_context_note(), why(WHY_GENDER)],
+                    sub="Hanya berkas dengan satu pemohon, supaya yang dibandingkan benar-benar "
+                    "gender dan bukan jumlah pemohon.",
                 ),
             ]
         )

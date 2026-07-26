@@ -20,7 +20,7 @@ saling bergantung menunjuk faktor yang sama.
 - **Fase 3 (association rule):** `debt_to_income_ratio=>60% → Denied`, confidence **91,5%**,
   lift **3,96**, n=4.121. Ditambah `DTI>60% + Subordinate_Lien → Denied`, confidence **94,0%**,
   lift **4,06**, n=1.555.
-- **Fase 3 (alasan penolakan):** **28,2%** penolakan mencantumkan "Debt-to-income", yang
+- **Fase 3 (alasan penolakan):** **28,4%** penolakan mencantumkan "Debt-to-income", yang
   tertinggi dari seluruh kategori. Aturan asosiasi ditambang tanpa melihat field ini sama
   sekali, sehingga kesepakatannya bukan hasil sirkularitas.
 - **Fase 2:** segmen *DTI-stressed borrowers* (8.731 aplikasi, 8,7% portfolio) punya tingkat
@@ -48,8 +48,8 @@ tidak tersedia di HMDA publik. Sebagian besar kekuatan penjelas keputusan berada
 jangkauan dataset ini.
 
 **Evidence:**
-- **Fase 3 (alasan penolakan):** **25,1%** penolakan mencantumkan "Credit history", disusul
-  Collateral **14,2%** dan Other **12,2%**.
+- **Fase 3 (alasan penolakan):** **25,3%** penolakan mencantumkan "Credit history", disusul
+  Collateral **14,3%** dan Other **11,6%**.
 - **Fase 1:** tidak satu pun dari 99 kolom mentah memuat credit score, cadangan dana, maupun
   riwayat pembayaran.
 
@@ -103,22 +103,26 @@ kepemilikan tanah yang ikut menentukan kelayakan agunan.
 ### 3. Selisih persetujuan antar kelompok justru paling lebar di kelompok berisiko rendah
 
 **Finding:**
-Setelah distratifikasi menurut beban utang, selisih persetujuan antar lingkungan dan antar
-kelompok gender tidak menutup. Polanya berlawanan dengan dugaan umum: selisih terbesar berada
-di kelompok DTI rendah, yaitu kelompok yang paling aman secara finansial.
+Setelah beban utang disamakan, selisih persetujuan antar lingkungan tetap ada dan justru paling
+besar di kelompok DTI rendah, yaitu kelompok yang paling aman secara finansial. Sebaliknya,
+selisih gender praktis hilang begitu struktur pemohon disetarakan.
 
 **Evidence:**
 - **Fase 5 (tract minority × DTI):** pada DTI rendah (<36%), tract minoritas-rendah **85,5%**
   versus tract mayoritas-minoritas **73,4%**, selisih **12,1 poin**. Pada DTI tinggi (>50%)
   selisihnya menyempit menjadi **1,8 poin**.
-- **Fase 5 (gender × DTI):** pada DTI rendah, aplikasi Joint **88,6%** versus Female **80,9%**
-  dan Male **80,0%**. Secara keseluruhan Joint **83,0%**, Male **73,9%**, Female **72,3%**.
+- **Fase 5 (gender × DTI):** setelah dibatasi pada **35.191** berkas pemohon tunggal, selisih
+  gender nyaris hilang: Male **73,5%** versus Female **71,9%**, cuma **1,6 poin**. Pada DTI
+  rendah Female justru sedikit lebih tinggi, **80,8%** berbanding **79,5%**. Kategori `Joint`
+  sengaja dikeluarkan karena bukan gender, melainkan penanda berkas dua pemohon: **99,9%**
+  di antaranya punya co-applicant dengan median income **$119rb** berbanding Female **$71rb**.
 - **Fase 3:** menambahkan atribut demografis ke aturan DTI inti tidak lolos improvement filter,
   artinya demografi tidak menambah daya pisah di atas DTI.
 
 **Why it matters:**
-Selisih yang bertahan justru di kelompok paling aman adalah sinyal yang perlu ditelaah lebih
-lanjut untuk kepatuhan fair lending.
+Selisih antar lingkungan yang justru paling besar di kelompok paling aman adalah sinyal yang
+perlu ditelaah untuk kepatuhan fair lending. Sebaliknya, gender tidak menunjukkan pola serupa
+setelah struktur pemohon disetarakan.
 
 **Recommendation:**
 Jadikan segmen DTI rendah sebagai prioritas tinjauan fair lending internal, memakai data
@@ -196,11 +200,12 @@ ukuran pinjaman: DTI di atas 60% berasosiasi dengan penolakan pada confidence 91
 3,96, sementara segmen jumbo dengan pinjaman terbesar justru disetujui 87,4%. Kedua, terdapat
 penalti yang melekat pada **jenis properti**: manufactured housing muncul sebagai segmen paling
 kohesif sekaligus paling ditolak, dan ketiga fase berbeda menunjuk kelompok yang sama. Ketiga,
-**alasan resmi lender menyepakati temuan mining**, karena DTI tercatat 28,2% sebagai alasan
-terbanyak, sementara faktor terbesar kedua yaitu credit history 25,1% justru tidak ada di data. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
+**alasan resmi lender menyepakati temuan mining**, karena DTI tercatat 28,4% sebagai alasan
+terbanyak, sementara faktor terbesar kedua yaitu credit history 25,3% justru tidak ada di data. Keempat, nilai ekstrem ternyata **sah secara aritmetika**, dan
 dan pola kolektif tingkat kelompok justru menunjuk balik ke manufactured housing. Kelima, selisih
-persetujuan antar kelompok demografis dan geografis **bertahan setelah beban utang disamakan**,
-dan paling lebar justru pada kelompok berisiko rendah. Gabungan inilah yang tidak tampak dari
+persetujuan antar lingkungan **tetap ada setelah beban utang disamakan** dan paling lebar justru
+pada kelompok berisiko rendah, sementara selisih gender justru hilang setelah struktur pemohon
+disetarakan. Gabungan inilah yang tidak tampak dari
 data mentah: struktur keputusan, penalti produk, keterbatasan pelaporan, dan disparitas residual
 yang menuntut penyelidikan lanjutan.
 
@@ -233,8 +238,8 @@ yang menuntut penyelidikan lanjutan.
 
 - **Aksi:** Audit internal atas selisih persetujuan di kelompok DTI rendah memakai data
   underwriting lengkap.
-- **Bukti:** Selisih 12,1 poin antar tract minoritas dan 7,7 poin antara Joint dan Female, keduanya
-  pada DTI rendah, justru mengecil pada DTI tinggi.
+- **Bukti:** Selisih 12,1 poin antar tract minoritas pada DTI rendah, mengecil jadi 1,8 poin pada
+  DTI tinggi. Selisih gender tidak dimasukkan karena hanya 1,6 poin setelah dibatasi pemohon tunggal.
 - **Nilai bisnis:** Menurunkan risiko kepatuhan sebelum menjadi temuan regulator.
 - **Kehati-hatian:** Data publik tidak memuat credit score dan cadangan dana, jadi ini sinyal
   penyelidikan, bukan kesimpulan diskriminasi.
@@ -242,7 +247,7 @@ yang menuntut penyelidikan lanjutan.
 ### 4. Lengkapi analisis dengan data credit history
 
 - **Aksi:** Gabungkan data credit score internal sebelum menarik kesimpulan apa pun soal disparitas.
-- **Bukti:** Credit history adalah alasan penolakan terbanyak kedua di 25,1%, tetapi tidak ada
+- **Bukti:** Credit history adalah alasan penolakan terbanyak kedua di 25,3%, tetapi tidak ada
   satu pun kolom HMDA yang memuatnya.
 - **Nilai bisnis:** Mencegah kesimpulan fair lending yang keliru karena variabel penjelas utama hilang.
 - **Kehati-hatian:** Selama variabel ini absen, seluruh selisih yang terlihat tetap berstatus

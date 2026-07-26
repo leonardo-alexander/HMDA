@@ -278,32 +278,52 @@ def build_geography_gap(piv_rate, piv_n):
 
 
 def build_gender_gap(appdeny):
-    """Approval by applicant sex, both overall and stratified by DTI group.
+    """Approval by applicant sex, restricted to single-applicant files.
 
-    Same treatment as the tract-minority analysis: a raw gap means little until equal
-    debt burden is compared against equal debt burden, so the DTI split is what decides
-    whether the gap is explained away or survives.
+    HMDA's `derived_sex` is not purely a gender field: the value "Joint" means the applicant
+    and co-applicant are of different sexes, so it marks a two-applicant household rather
+    than a person's sex. Those files carry 99.9% co-applicant presence and a much higher
+    median income, so comparing Joint against Female measures household structure and
+    earning power, not gender. Restricting to single-applicant files makes Male vs Female an
+    apples-to-apples comparison; the two-applicant rate is exported separately as context.
     """
     if not {"derived_sex", "target_approved"}.issubset(appdeny.columns):
         print("Gender gap: derived_sex missing, skipped")
         return
     d = appdeny.copy()
     d["dti_group"] = d["debt_to_income_ratio"].astype(str).map(cfg.DTI_GRP).fillna("Unknown/Exempt")
+    has_co = d["co_applicant_age"].astype(str).ne("No_CoApplicant")
+    d["structure"] = np.where(has_co, "Dua pemohon", "Pemohon tunggal")
 
-    overall = (d.groupby("derived_sex")["target_approved"]
+    solo = d[(~has_co) & d["derived_sex"].isin(["Male", "Female"])]
+
+    overall = (solo.groupby("derived_sex")["target_approved"]
                .agg(n="size", approval_rate="mean").reset_index())
     overall["approval_rate"] = (overall["approval_rate"] * 100).round(1)
     overall["dti_group"] = "Semua"
 
-    by_dti = (d.groupby(["derived_sex", "dti_group"])["target_approved"]
+    by_dti = (solo.groupby(["derived_sex", "dti_group"])["target_approved"]
               .agg(n="size", approval_rate="mean").reset_index())
     by_dti["approval_rate"] = (by_dti["approval_rate"] * 100).round(1)
 
     out = pd.concat([overall, by_dti], ignore_index=True)
     out = out[out["n"] >= 30]
     out.to_csv(DATA_PROCESSED / "dash_gender_gap.csv", index=False)
-    print(f"Gender gap: {out['derived_sex'].nunique()} groups x "
-          f"{out['dti_group'].nunique()} DTI bands")
+
+    # Context table: what the raw derived_sex categories look like before the restriction,
+    # so the "Joint is not a gender" caveat can be shown with its own numbers.
+    ctx = (d.groupby("derived_sex")
+           .agg(n=("target_approved", "size"),
+                approval_rate=("target_approved", "mean"),
+                pct_with_coapplicant=("structure", lambda s: (s == "Dua pemohon").mean()),
+                median_income=("income", "median"))
+           .reset_index())
+    ctx["approval_rate"] = (ctx["approval_rate"] * 100).round(1)
+    ctx["pct_with_coapplicant"] = (ctx["pct_with_coapplicant"] * 100).round(1)
+    ctx.to_csv(DATA_PROCESSED / "dash_gender_context.csv", index=False)
+
+    print(f"Gender gap: {len(solo):,} single-applicant files, "
+          f"{out['dti_group'].nunique()} DTI bands (Joint excluded as not-a-gender)")
 
 
 def build_state_aggregates(clean, appdeny, denials):
