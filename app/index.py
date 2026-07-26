@@ -449,6 +449,15 @@ denial = read("dash_denial_reasons.csv")
 appdeny_full = read(
     "hmda_approve_deny.csv"
 )  # every decisioned application with raw/binned fields, for the What-If combined filter
+if appdeny_full is not None and "loan_term" in appdeny_full.columns:
+    # Loan duration used to sit in its own panel and did not filter anything. Banding it
+    # here lets it join the combined profile lookup like every other attribute.
+    _t = pd.to_numeric(appdeny_full["loan_term"], errors="coerce")
+    appdeny_full["term_band"] = pd.cut(
+        _t,
+        bins=[-np.inf, 120, 180, 240, 300, 360, np.inf],
+        labels=["<=10yr", "15yr", "20yr", "25yr", "30yr", ">30yr"],
+    ).astype("string")
 if appdeny_full is not None and "target_approved" not in appdeny_full.columns:
     if "action_taken" in appdeny_full.columns:
         appdeny_full["target_approved"] = (
@@ -2058,25 +2067,25 @@ TRACT_INCOME_ORDER = ["Low_Income", "Moderate_Income", "Middle_Income", "Upper_I
 
 # field -> (label, kind, order_or_values, default)
 WHATIF_FIELDS = [
-    ("debt_to_income_ratio", "Debt-to-income", "slider", DTI_ORDER, "36%-<43%"),
-    ("lien_status", "Lien status", "radio", ["First_Lien", "Subordinate_Lien"], None),
+    ("debt_to_income_ratio", "Debt-to-income", "dropdown", DTI_ORDER, None),
+    ("lien_status", "Status lien", "dropdown", ["First_Lien", "Subordinate_Lien"], None),
     (
         "loan_type",
-        "Loan type",
+        "Jenis loan",
         "dropdown",
         ["Conventional", "FHA", "VA", "RHS_FSA"],
         None,
     ),
     (
         "construction_method",
-        "Construction method",
-        "radio",
+        "Metode konstruksi",
+        "dropdown",
         ["Site_Built", "Manufactured"],
         None,
     ),
     (
         "loan_purpose",
-        "Loan purpose",
+        "Tujuan loan",
         "dropdown",
         [
             "Home_Purchase",
@@ -2088,9 +2097,9 @@ WHATIF_FIELDS = [
         ],
         None,
     ),
-    ("income_band", "Income band", "slider", INCOME_BAND_ORDER, "75-100k"),
-    ("preapproval", "Preapproval", "radio", ["Not_Requested", "Requested"], None),
-    ("loan_amount_band", "Loan amount", "slider", LOAN_AMOUNT_BAND_ORDER, "100-200k"),
+    ("income_band", "Band income", "dropdown", INCOME_BAND_ORDER, None),
+    ("preapproval", "Preapproval", "dropdown", ["Not_Requested", "Requested"], None),
+    ("loan_amount_band", "Besar loan", "dropdown", LOAN_AMOUNT_BAND_ORDER, None),
 ]
 
 
@@ -2120,24 +2129,25 @@ BASE_APPROVAL = compute_base_approval()
 # labeled "context only". That gap is handled properly, with the right caveats, on the
 # Fairness tab instead.
 CONTEXT_FIELDS = [
-    ("applicant_age", "Applicant age", "slider", AGE_ORDER, "35-44"),
-    ("occupancy_type", "Occupancy type", "dropdown", None, None),
-    ("total_units", "Total units", "slider", UNITS_ORDER, "1"),
-    ("conforming_loan_limit", "Conforming loan limit", "dropdown", None, None),
+    ("applicant_age", "Usia pemohon", "dropdown", AGE_ORDER, None),
+    ("occupancy_type", "Jenis hunian", "dropdown", None, None),
+    ("total_units", "Jumlah unit", "dropdown", UNITS_ORDER, None),
+    ("conforming_loan_limit", "Batas conforming loan", "dropdown", None, None),
+    ("term_band", "Durasi loan", "dropdown", TERM_ORDER, None),
     (
         "property_value_band",
-        "Property value",
-        "slider",
+        "Nilai properti",
+        "dropdown",
         PROPERTY_VALUE_BAND_ORDER,
-        "200-350k",
+        None,
     ),
-    ("cltv_band", "CLTV", "slider", CLTV_BAND_ORDER, "60-80%"),
+    ("cltv_band", "CLTV", "dropdown", CLTV_BAND_ORDER, None),
     (
         "tract_income_cat",
-        "Tract income level",
-        "slider",
+        "Level income tract",
+        "dropdown",
         TRACT_INCOME_ORDER,
-        "Middle_Income",
+        None,
     ),
 ]
 
@@ -2153,46 +2163,47 @@ def _dropdown_options(field):
     return context_fields.loc[context_fields["field"] == field, "value"].tolist()
 
 
+# Display labels for raw HMDA option values. Only what the user reads changes; the value
+# sent back to the callback stays the raw category so the profile lookup still matches.
+VALUE_LABELS = {
+    "First_Lien": "Lien pertama",
+    "Subordinate_Lien": "Lien kedua",
+    "Site_Built": "Dibangun di lokasi",
+    "Manufactured": "Manufactured / pabrikan",
+    "Home_Purchase": "Beli rumah",
+    "Home_Improvement": "Renovasi",
+    "Refinance": "Refinance",
+    "CashOut_Refinance": "Refinance tarik tunai",
+    "Other": "Lainnya",
+    "NotApplicable": "Tidak berlaku",
+    "Not_Requested": "Tidak diminta",
+    "Requested": "Diminta",
+    "Conventional": "Conventional",
+    "Principal_Residence": "Rumah utama",
+    "Second_Residence": "Rumah kedua",
+    "Investment": "Investasi",
+    "Low_Income": "Income rendah",
+    "Moderate_Income": "Income menengah-bawah",
+    "Middle_Income": "Income menengah",
+    "Upper_Income": "Income atas",
+    "Age_NA": "Tidak diketahui",
+    "No_CoApplicant": "Tanpa co-applicant",
+    "Exempt": "Dikecualikan",
+    "Unknown": "Tidak diketahui",
+    "C": "Conforming",
+    "NC": "Non-conforming",
+    "U": "Tidak diketahui",
+}
+
+
+def vlabel(v):
+    return VALUE_LABELS.get(str(v), str(v))
+
+
 def render_control(field, label, kind, order_or_values, default, id_prefix):
-    if kind == "slider":
-        default_idx = (
-            order_or_values.index(default) if default in order_or_values else 0
-        )
-        return html.Div(
-            [
-                html.Label(
-                    label,
-                    style={"fontSize": "11px", "color": MUTE, "fontWeight": "600"},
-                ),
-                dcc.Slider(
-                    id=f"{id_prefix}-{field}",
-                    min=0,
-                    max=len(order_or_values) - 1,
-                    step=1,
-                    value=default_idx,
-                    marks={i: v for i, v in enumerate(order_or_values)},
-                ),
-            ],
-            style={"minWidth": "220px", "flex": "1 1 220px"},
-        )
-    if kind == "radio":
-        return html.Div(
-            [
-                html.Label(
-                    label,
-                    style={"fontSize": "11px", "color": MUTE, "fontWeight": "600"},
-                ),
-                dcc.RadioItems(
-                    id=f"{id_prefix}-{field}",
-                    options=[{"label": "(not specified)", "value": ""}]
-                    + [{"label": v, "value": v} for v in order_or_values],
-                    value="",
-                    inline=True,
-                    style={"fontSize": "11px", "marginTop": "4px"},
-                ),
-            ],
-            style={"minWidth": "200px", "flex": "1 1 200px"},
-        )
+    # Every control is a dropdown. Sliders were unusable here: with 6-9 bands their tick
+    # labels overlapped into an unreadable smear, and they could not express
+    # "not specified" the way the dropdowns and toggles already did.
     opts = order_or_values if order_or_values else _dropdown_options(field)
     return html.Div(
         [
@@ -2201,8 +2212,8 @@ def render_control(field, label, kind, order_or_values, default, id_prefix):
             ),
             dcc.Dropdown(
                 id=f"{id_prefix}-{field}",
-                options=[{"label": "(not specified)", "value": ""}]
-                + [{"label": v, "value": v} for v in opts],
+                options=[{"label": "(tidak ditentukan)", "value": ""}]
+                + [{"label": vlabel(v), "value": v} for v in opts],
                 value="",
                 clearable=False,
                 style={"fontSize": "12px"},
@@ -2213,11 +2224,8 @@ def render_control(field, label, kind, order_or_values, default, id_prefix):
 
 
 def decode_control(kind, order_or_values, default, raw):
-    if kind == "slider":
-        try:
-            return order_or_values[int(raw)]
-        except (TypeError, ValueError, IndexError):
-            return default
+    # All controls are dropdowns now, so the raw value is already the label itself;
+    # "" means the user left the field unspecified.
     return raw or ""
 
 
@@ -2625,14 +2633,15 @@ app.layout = html.Div(
         html.Div(
             dcc.Tabs(
                 id="tabs",
-                value="fase1",
+                value="summary",
                 className="hmda-tabs",
                 children=[
-                    dcc.Tab(label="Fase 1 - Prapemrosesan", value="fase1"),
-                    dcc.Tab(label="Fase 2 - Segmentasi (Klaster)", value="fase2"),
-                    dcc.Tab(label="Fase 3 - Aturan Asosiasi", value="fase3"),
-                    dcc.Tab(label="Fase 4 - Deteksi Anomali", value="fase4"),
-                    dcc.Tab(label="Fase 5 - Pelaporan & Keadilan", value="fase5"),
+                    dcc.Tab(label="Executive Summary", value="summary"),
+                    dcc.Tab(label="Fase 1 - Preprocessing", value="fase1"),
+                    dcc.Tab(label="Fase 2 - Clustering", value="fase2"),
+                    dcc.Tab(label="Fase 3 - Association Rules", value="fase3"),
+                    dcc.Tab(label="Fase 4 - Anomaly Detection", value="fase4"),
+                    dcc.Tab(label="Fase 5 - Reporting & Fairness", value="fase5"),
                 ],
             ),
             style={"padding": "18px 24px 0"},
@@ -2977,24 +2986,11 @@ def _load_test_panel():
                     html.H4("Render pertama tiap tab (cache kosong)",
                             style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
                     _table(cold_df),
-                    html.P(
-                        "Fase 1 paling lambat karena membangun tujuh panel sekaligus; Fase 4 "
-                        "menghasilkan respons terbesar (276 KB) karena scatter taksonomi memuat "
-                        "ribuan titik. Keduanya masih di bawah 300 ms.",
-                        style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 16px",
-                               "lineHeight": "1.6"},
-                    ),
+                    html.Div(style={"height": "16px"}),
                     html.H4("Penskalaan terhadap concurrency (100 request, cache terisi)",
                             style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
                     _table(conc_df),
-                    html.P(
-                        "Throughput mendatar di sekitar 220 req/s sejak concurrency 5, sementara "
-                        "latency naik hampir linear. Ini tanda bottleneck terserialisasi (GIL + "
-                        "development server): menambah concurrency tidak menambah kapasitas, "
-                        "hanya memperpanjang antrean.",
-                        style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 16px",
-                               "lineHeight": "1.6"},
-                    ),
+                    html.Div(style={"height": "16px"}),
                     html.H4("Beban berkelanjutan 30 detik (concurrency 20)",
                             style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
                     html.P(
@@ -3324,7 +3320,6 @@ def render(tab):
     elif tab == "fase5":
         return html.Div(
             [
-                render("summary"),
                 render("geography"),
                 render("whatif"),
                 render("fairness"),
@@ -3890,7 +3885,6 @@ def render(tab):
             render_control(field, label, kind, order, default, "ctx")
             for field, label, kind, order, default in CONTEXT_FIELDS
         ]
-        term_default = TERM_ORDER.index("30yr") if "30yr" in TERM_ORDER else 0
         return html.Div(
             [
                 panel(
@@ -3905,11 +3899,9 @@ def render(tab):
                             },
                         ),
                         html.Div(
-                            "Slider mencakup seluruh rentang tiap field dan selalu punya nilai (default ke band "
-                            'paling umum); dropdown dan toggle default ke "tidak ditentukan". Hasil di bawah adalah '
-                            "tingkat persetujuan historis nyata di antara aplikasi yang cocok dengan semua atribut "
-                            "yang dipilih di sini sekaligus. Ini pencarian langsung terhadap aplikasi historis, "
-                            "bukan model prediktif terlatih, dan bukan jaminan bagi pemohon mana pun.",
+                            "Semua field default ke tidak ditentukan. Hasil di bawah adalah tingkat "
+                            "persetujuan historis nyata di antara aplikasi yang cocok dengan semua "
+                            "atribut terpilih sekaligus, bukan model prediktif.",
                             style={
                                 "fontSize": "11px",
                                 "color": MUTE,
@@ -3917,24 +3909,6 @@ def render(tab):
                             },
                         ),
                     ],
-                ),
-                panel(
-                    "Durasi loan",
-                    [
-                        dcc.Slider(
-                            id="wi-term-band",
-                            min=0,
-                            max=len(TERM_ORDER) - 1,
-                            step=1,
-                            value=term_default,
-                            marks={i: b for i, b in enumerate(TERM_ORDER)},
-                        ),
-                        html.Div(id="wi-term-detail", style={"marginTop": "10px"}),
-                    ],
-                    sub="HMDA 2022 tidak punya tanggal kalender untuk difilter (activity_year konstan), jadi durasi loan "
-                    "menjadi yang paling mendekati sumbu waktu. Ditampilkan hanya sebagai konteks: bukan bagian "
-                    "dari profil gabungan di atas. Loan 25-tahun adalah satu pengecualian yang layak diketahui: "
-                    "turun ke 56,2% persetujuan, porsi high-DTI tertinggi dari semua band.",
                 ),
                 html.Div(id="whatif-result"),
             ]
@@ -3952,19 +3926,6 @@ def render(tab):
                     "Apakah selisih bertahan setelah mengontrol DTI?",
                     [graph(fig_dti_geo_gap())],
                     sub="Perbandingan yang sama, dipisah menurut prediktor penolakan terkuat dalam dataset.",
-                ),
-                panel(
-                    "Cara membaca ini",
-                    [
-                        html.P(
-                            "Tab Aturan menunjukkan penolakan mengikuti debt-to-income, bukan ras: menambahkan ras ke aturan DTI "
-                            "inti nyaris tidak menggeser lift-nya. Ini cross-check-nya: profil finansial yang setara semestinya "
-                            "menunjukkan tingkat persetujuan yang setara. Selisih tidak menutup dalam band DTI (terbesar, 12,1 "
-                            "poin, pada kelompok berisiko-terendah, DTI-rendah), sebuah pola residual tak terjelaskan yang layak "
-                            "diselidiki lebih lanjut untuk fair-lending, asosiasi semata, bukan temuan kausal.",
-                            style={"fontSize": "13px", "color": INK},
-                        )
-                    ],
                 ),
             ]
         )
@@ -4209,12 +4170,6 @@ def _cb_rules_all_table(outcome, min_lift):
 
 
 # ============================================================ what-if callback
-@app.callback(Output("wi-term-detail", "children"), Input("wi-term-band", "value"))
-def _cb_wi_term(idx):
-    idx = int(idx) if idx is not None else TERM_ORDER.index("30yr")
-    return fig_term_range_detail(idx, idx)
-
-
 @app.callback(
     Output("whatif-result", "children"),
     [Input(f"wi-{field}", "value") for field, _, _, _, _ in WHATIF_FIELDS]
@@ -4230,24 +4185,23 @@ def _cb_whatif(*values):
 
     appr, n, active = combined_match(selected)
     if not active:
-        note = "Pick any attribute above to see the historical approval rate for that profile."
+        note = "Pilih atribut apa pun di atas untuk melihat tingkat persetujuan historis profil itu."
     elif n == 0:
         note = (
-            f"No historical applications match all {len(active)} selected attributes together "
-            "(the combination is too specific or unobserved in this sample). Showing the "
-            "overall portfolio approval rate instead."
+            f"Tidak ada aplikasi historis yang cocok dengan semua {len(active)} atribut terpilih "
+            "sekaligus. Kombinasinya terlalu spesifik atau memang tidak ada di sampel ini, jadi "
+            "yang ditampilkan tingkat persetujuan portfolio keseluruhan."
         )
     else:
-        detail = "; ".join(f"{label}={value}" for label, value in active)
+        detail = "; ".join(f"{label}={vlabel(value)}" for label, value in active)
         note = (
-            f"{n:,} historical applications match all {len(active)} selected attributes "
-            f"({detail})."
+            f"{n:,} aplikasi historis cocok dengan semua {len(active)} atribut terpilih. {detail}."
         )
         if n < 30:
-            note += f" Caution: only {n:,} matching applications -- treat this rate as noisy."
-    outcome_label = "Combined historical approval rate"
+            note += f" Hati-hati, cuma {n:,} aplikasi yang cocok, jadi angkanya belum stabil."
+    outcome_label = "Tingkat persetujuan historis gabungan"
     return panel(
-        "Result",
+        "Hasil",
         [
             html.Div(
                 [
