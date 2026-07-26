@@ -3089,11 +3089,11 @@ WHY_DETECTORS = [
 
 WHY_TAXONOMY = [
     (
-        "Kenapa outlier kolektif dipisah sendiri?",
-        "Karena kelima detektor menilai baris satu per satu, jadi secara desain buta terhadap pola "
-        "kelompok. Semua 2.413 loan di atas $1 juta berakhiran 5.000, tapi tidak ada satu pun loan "
-        "yang janggal kalau dilihat sendirian. Yang janggal itu polanya secara bersama, dan itu jejak "
-        "aturan pembulatan HMDA, bukan sinyal risiko.",
+        "Kenapa taksonomi ini cuma memuat dua kelas, bukan tiga?",
+        "Karena kelima detektor semuanya menilai baris satu per satu, jadi secara desain hanya bisa "
+        "menghasilkan outlier global dan kontekstual. Outlier kolektif menuntut unit analisis yang "
+        "berbeda, yaitu kelompok, sehingga ditangani terpisah pada panel anomali tingkat grup di "
+        "bawah.",
     ),
     (
         "Kenapa outlier global jauh lebih banyak dari kontekstual?",
@@ -3455,7 +3455,32 @@ WHY_CLUSTER_FEATS = [
 ]
 
 
+WHY_PCA = [
+    ("Berapa komponen PCA yang dipakai?",
+     "Dua, yaitu PC1 dan PC2. Ruang fiturnya punya 9 dimensi, jadi tersedia 9 komponen, "
+     "tetapi yang digambar cuma dua."),
+    ("Kenapa dua, bukan jumlah yang menangkap 90% variansi?",
+     "Karena PCA di sini semata alat gambar, bukan bagian dari clustering. Layar cuma punya "
+     "dua sumbu, jadi dua komponen adalah batas yang bisa diplot. Kalau tujuannya menangkap "
+     "variansi, jumlahnya akan jauh berbeda: butuh 7 komponen untuk mencapai 86,2% dan 8 "
+     "komponen untuk 93,2%."),
+    ("Berapa variansi yang tertangkap dua komponen itu?",
+     "PC1 menjelaskan 16,7% dan PC2 15,2%, jadi totalnya cuma 31,9%. Sisanya 68,1% tidak "
+     "terlihat di gambar. Ini karena kesembilan fitur relatif tidak saling berkorelasi, "
+     "sejalan dengan audit VIF di Fase 1 yang menemukan nol fitur melewati ambang."),
+    ("Apa konsekuensinya untuk membaca scatter plot?",
+     "Dua cluster yang tampak bertumpuk di gambar belum tentu benar-benar bertumpuk, karena "
+     "bisa saja terpisah pada dimensi yang tidak digambar. Karena itu penilaian kualitas "
+     "cluster memakai silhouette, Davies-Bouldin, dan Calinski-Harabasz yang dihitung pada "
+     "seluruh 9 dimensi, bukan pada proyeksi 2 dimensi ini."),
+    ("Apakah clustering dijalankan pada hasil PCA?",
+     "Tidak. K-Means, DBSCAN, Ward, dan CLARANS semuanya bekerja pada matriks 9 fitur yang "
+     "penuh. PCA baru diterapkan sesudahnya, hanya untuk menempatkan titik-titik di gambar."),
+]
+
+
 CLUSTER_SCOPE = {
+    "shared": ("Keempat metode", "cakupan masing-masing, lihat tabel perbandingan"),
     "kmeans": ("K-Means", "seluruh 99.995 baris"),
     "dbscan": ("DBSCAN", "sampel 20.000 baris"),
     "hierarchical": ("Hierarchical (Ward)", "sampel 4.000 baris"),
@@ -3482,16 +3507,16 @@ def _cluster_feats_details(method):
     return html.Details(
         [
             html.Summary(
-                f"Fitur yang dipakai {name} dan cara penskalaannya (klik)",
+                "Fitur yang dipakai dan cara penskalaannya (klik)",
                 style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
                        "color": STEEL, "padding": "4px 0", "userSelect": "none"},
             ),
             html.Div(
                 [
                     html.P(
-                        f"{name} dijalankan pada {scope} memakai 9 fitur berikut. Keempat metode "
-                        "clustering memakai matriks yang sama persis, jadi perbedaan hasilnya "
-                        "murni berasal dari algoritmanya, bukan dari fiturnya.",
+                        "Kesembilan fitur berikut dipakai keempat metode clustering, dengan "
+                        "perlakuan penskalaan yang sama. Yang berbeda cuma cakupan barisnya, dan "
+                        "itu ada di tabel perbandingan.",
                         style={"fontSize": "12px", "color": INK, "margin": "0 0 10px",
                                "lineHeight": "1.6"},
                     ),
@@ -3511,6 +3536,82 @@ def _cluster_feats_details(method):
                         "terhitung berulang dan mendominasi jarak. Keduanya tetap dipakai penuh "
                         "di matriks anomali Fase 4.",
                         style={"fontSize": "11.5px", "color": MUTE, "margin": "8px 0 0",
+                               "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"marginTop": "12px"},
+            ),
+        ],
+        style={"background": "#f8fafd", "border": f"1px solid {BORDER}",
+               "borderRadius": "10px", "padding": "12px 16px", "marginBottom": "16px"},
+    )
+
+
+WHY_RULE_FEATS = [
+    ("Kenapa fiturnya kategorikal semua, tidak ada yang kontinu?",
+     "Karena Apriori bekerja pada item yang ada atau tidak ada, bukan pada angka. Fitur "
+     "kontinu seperti income dan besar loan lebih dulu diubah jadi band, sehingga "
+     "income=<30k bisa diperlakukan sebagai satu item."),
+    ("Kenapa fiturnya jauh lebih banyak dari clustering?",
+     "Karena tujuannya beda. Clustering butuh sedikit dimensi supaya jaraknya bermakna, "
+     "sedangkan association rule justru mencari kombinasi kondisi, jadi makin banyak kandidat "
+     "item makin kaya polanya. Ledakan kombinasinya ditahan oleh minimum support 2% dan "
+     "batas panjang itemset maksimal 3."),
+    ("Kenapa fitur demografis ikut di sini padahal tidak dipakai di What-If?",
+     "Supaya bisa diuji, bukan supaya dipakai menilai. Dengan memasukkan ras, etnis, dan "
+     "gender sebagai kandidat item, kita bisa melihat apakah menambahkannya ke aturan DTI "
+     "meningkatkan daya pisah. Hasilnya tidak, karena semua varian itu gugur di improvement "
+     "filter. Justru ketidakhadirannya di aturan final yang jadi temuan."),
+    ("Kenapa tidak ada penskalaan di sini?",
+     "Karena tidak ada jarak yang dihitung. Apriori cuma menghitung seberapa sering item "
+     "muncul bersama, jadi StandardScaler maupun RobustScaler tidak relevan. Yang berperan "
+     "sebagai gantinya adalah binning."),
+]
+
+
+def _rule_features_details():
+    """Feature list behind the transaction matrix used for Apriori."""
+    groups = [
+        ("Profil pemohon", ["derived_race", "derived_ethnicity", "derived_sex",
+                            "applicant_age", "income_band"]),
+        ("Karakteristik loan", ["loan_type", "loan_purpose", "lien_status", "preapproval",
+                                "conforming_loan_limit", "loan_amount_band"]),
+        ("Properti & agunan", ["occupancy_type", "construction_method", "total_units",
+                               "property_value_band", "cltv_band"]),
+        ("Beban utang", ["debt_to_income_ratio"]),
+        ("Konteks lingkungan", ["tract_income_cat", "tract_minority_cat"]),
+    ]
+    df = pd.DataFrame(
+        [{"Kelompok": g, "Fitur": f,
+          "Perlakuan": ("sudah band, dipakai apa adanya"
+                        if f.endswith(("_band", "_cat")) or f == "debt_to_income_ratio"
+                        else "kategorikal, dipakai apa adanya")}
+         for g, feats in groups for f in feats]
+    )
+    return html.Details(
+        [
+            html.Summary(
+                "Fitur yang dipakai association rules dan perlakuannya (klik)",
+                style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
+                       "color": STEEL, "padding": "4px 0", "userSelect": "none"},
+            ),
+            html.Div(
+                [
+                    html.P(
+                        "19 fitur dijadikan kandidat item, lalu diubah menjadi matriks "
+                        "transaksi one-hot pada 67.827 aplikasi berkeputusan. Item yang muncul "
+                        "di bawah 2% atau di atas 95% dibuang lebih dulu, menyisakan 82 item "
+                        "yang benar-benar ditambang.",
+                        style={"fontSize": "12px", "color": INK, "margin": "0 0 10px",
+                               "lineHeight": "1.6"},
+                    ),
+                    _table(df),
+                    html.P(
+                        "Tidak ada penskalaan di sini, karena Apriori tidak menghitung jarak. "
+                        "Fitur kontinu ditangani lewat binning, bukan StandardScaler. Fitur "
+                        "pasca-keputusan seperti interest rate dan biaya tetap dikecualikan, "
+                        "sama seperti di clustering dan deteksi anomali.",
+                        style={"fontSize": "11.5px", "color": MUTE, "margin": "10px 0 0",
                                "lineHeight": "1.6"},
                     ),
                 ],
@@ -4535,10 +4636,31 @@ def render(tab):
         )
 
     if tab == "segments":
+        # Order: read the method rationale and the shared setup first, then choose a
+        # method, then look at its charts. The feature list lives here once because all
+        # four methods run on the identical matrix; repeating it per method was noise.
         return html.Div(
             [
                 panel(
-                    "Metode clustering",
+                    "Metode clustering dan dasar pemilihannya",
+                    [
+                        html.P(
+                            "Keempat metode dijalankan pada matriks yang sama persis, yaitu 9 "
+                            "fitur dengan StandardScaler. K-Means adalah segmentasi utama dan "
+                            "dilatih pada seluruh 99.995 aplikasi, sedangkan DBSCAN, Hierarchical, "
+                            "dan CLARANS dijalankan pada sampel sebagai validasi silang. Karena "
+                            "fitur dan perlakuannya identik, perbedaan hasil di bawah murni "
+                            "berasal dari algoritmanya.",
+                            style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+                        ),
+                        why(WHY_METHODS, "Kenapa empat metode ini? (klik)"),
+                        _cluster_feats_details("shared"),
+                        why(WHY_PCA, "Berapa komponen PCA yang dipakai dan kenapa? (klik)"),
+                    ],
+                ),
+                _clustering_comparison_panel(),
+                panel(
+                    "Pilih metode untuk dilihat grafiknya",
                     [
                         dcc.RadioItems(
                             id="cluster-method",
@@ -4565,12 +4687,8 @@ def render(tab):
                             style={"fontSize": "12px"},
                         ),
                     ],
-                    sub="Keempat metode diwajibkan oleh brief: K-Means adalah segmentasi utama "
-                    "(dilatih pada seluruh data); DBSCAN, Hierarchical, dan CLARANS dijalankan pada sampel "
-                    "untuk validasi dan cross-check, sebagaimana didokumentasikan di Fase 2 notebook.",
+                    sub="Grafik di bawah mengikuti metode yang dipilih di sini.",
                 ),
-                panel("Kenapa empat metode ini?", [why(WHY_METHODS)]),
-                _clustering_comparison_panel(),
                 html.Div(id="segments-method-panel"),
             ]
         )
@@ -4598,6 +4716,8 @@ def render(tab):
                             },
                         ),
                         why(WHY_RULE_PRUNING),
+                        _rule_features_details(),
+                        why(WHY_RULE_FEATS, "Kenapa fitur-fitur itu yang dipakai? (klik)"),
                     ],
                 ),
                 panel(
@@ -4686,16 +4806,6 @@ def render(tab):
             n_both = int(vc_full.get("Both (global + contextual)", 0))
             n_normal = int(vc_full.get("Normal", 0))
         n_total = max(n_global + n_local + n_both + n_normal, 1)
-        coll_pct = (
-            float(collective_pattern["pct"].iloc[0])
-            if collective_pattern is not None and len(collective_pattern)
-            else None
-        )
-        coll_n = (
-            int(collective_pattern["loans_ge_1m"].iloc[0])
-            if collective_pattern is not None and len(collective_pattern)
-            else None
-        )
         return html.Div(
             [
                 panel(
@@ -4762,8 +4872,9 @@ def render(tab):
                                         ),
                                         html.Div(
                                             "Terdeteksi oleh IQR, Z-score, dan Isolation Forest: rekaman yang menyimpang dari "
-                                            "distribusi SELURUH dataset, tanpa syarat (mis. property value $130 juta "
-                                            "- ekstrem apa pun konteks rekamannya).",
+                                            "distribusi SELURUH dataset, tanpa syarat, misalnya property value $130 juta. "
+                                            "Insight bisnis: 10% portfolio terlalu banyak untuk ditinjau manual, jadi "
+                                            "pakai ini sebagai lapis penyaring awal, bukan antrean kerja.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -4814,9 +4925,10 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "Terdeteksi oleh LOF dan DBSCAN-noise: rekaman yang tampak biasa pada setiap "
-                                            "ambang fitur tunggal, tetapi berada di lingkungan yang jarang relatif "
-                                            "terhadap aplikasi serupa - tidak biasa hanya dalam konteks lokal itu.",
+                                            "Terdeteksi oleh LOF dan DBSCAN-noise: rekaman yang tampak biasa pada setiap ambang "
+                                            "fitur tunggal, tetapi berada di lingkungan yang jarang relatif terhadap "
+                                            "aplikasi serupa. Insight bisnis: justru kelompok ini yang lolos aturan "
+                                            "ambang konvensional, jadi paling berharga untuk tinjauan underwriting.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -4867,9 +4979,10 @@ def render(tab):
                                             },
                                         ),
                                         html.Div(
-                                            "Ditandai oleh setidaknya satu metode global DAN satu kontekstual/lokal - "
-                                            "anomali dengan confidence tertinggi, dan tepat kumpulan tempat hand-triage "
-                                            "top-15 (di bawah) diambil.",
+                                            "Ditandai oleh setidaknya satu metode global DAN satu kontekstual/lokal, "
+                                            "jadi anomali dengan keyakinan tertinggi. Insight bisnis: 476 rekaman itu "
+                                            "jumlah yang realistis untuk antrean tinjauan manual, dan inilah kumpulan "
+                                            "tempat triase 15 teratas diambil.",
                                             style={
                                                 "fontSize": "11.5px",
                                                 "color": INK,
@@ -4887,66 +5000,6 @@ def render(tab):
                                         "boxShadow": SOFT_SHADOW,
                                         "border": f"1px solid {BORDER}",
                                         "borderTop": f"3px solid {TAXONOMY_COLOR['Both (global + contextual)']}",
-                                    },
-                                ),
-                                html.Div(
-                                    [
-                                        html.Div(
-                                            "OUTLIER KOLEKTIF",
-                                            style={
-                                                "fontWeight": "800",
-                                                "color": AMBER,
-                                                "fontSize": "12px",
-                                                "letterSpacing": "0.5px",
-                                            },
-                                        ),
-                                        html.Div(
-                                            (
-                                                f"{coll_n:,} loans"
-                                                if coll_n is not None
-                                                else "N/A"
-                                            ),
-                                            style={
-                                                "fontSize": "24px",
-                                                "fontWeight": "800",
-                                                "color": NAVY,
-                                                "margin": "4px 0",
-                                            },
-                                        ),
-                                        html.Div(
-                                            (
-                                                f'>= $1M - {coll_pct:.0f}% berakhiran "...5,000"'
-                                                if coll_pct is not None
-                                                else "dari loan >= $1M berbagi satu ciri"
-                                            ),
-                                            style={
-                                                "fontSize": "11px",
-                                                "color": MUTE,
-                                                "marginBottom": "8px",
-                                            },
-                                        ),
-                                        html.Div(
-                                            "Tidak ada dari ke-5 detektor yang menyasar kelas ini (semuanya menilai "
-                                            'rekaman individual). Setiap loan >= $1M melaporkan nilai berakhiran "...5,000" '
-                                            "- aturan pembulatan-ke-titik-tengah-$10k wajib HMDA. Tidak ada satu loan pun "
-                                            "yang aneh; pola menyeluruh ini tanda proses pembangkitan data, bukan sinyal risiko.",
-                                            style={
-                                                "fontSize": "11.5px",
-                                                "color": INK,
-                                                "lineHeight": "1.5",
-                                            },
-                                        ),
-                                    ],
-                                    className="hmda-card",
-                                    style={
-                                        "flex": "1",
-                                        "minWidth": "230px",
-                                        "background": CARD,
-                                        "borderRadius": "14px",
-                                        "padding": "14px 16px",
-                                        "boxShadow": SOFT_SHADOW,
-                                        "border": f"1px solid {BORDER}",
-                                        "borderTop": f"3px solid {AMBER}",
                                     },
                                 ),
                             ],
@@ -4999,7 +5052,9 @@ def render(tab):
                     "Rekaman paling ekstrem: ditriase dengan bukti",
                     [_anomaly_table(), why(WHY_TRIAGE)],
                     sub="Jenis verdict: RARE BUT VALID (rekaman ekstrem yang sah) · RISK SIGNAL (tidak biasa tetapi "
-                    "mungkin) · DATA ERROR (nilai mustahil) · MANUAL REVIEW (diperiksa manual).",
+                    "mungkin) · DATA ERROR (nilai mustahil) · MANUAL REVIEW (diperiksa manual). "
+                    "Insight bisnis: seluruh 15 teratas terbukti sah, jadi ensemble ini tidak boleh "
+                    "dipakai sebagai aturan hapus otomatis karena akan membuang aplikasi jumbo yang benar.",
                 ),
             ]
         )
@@ -5142,7 +5197,6 @@ def _cb_segments(method):
         pct = (n_noise / n_total * 100) if n_total else 0
         return html.Div(
             [
-                _cluster_feats_details("dbscan"),
                 panel(
                     "Ukuran cluster DBSCAN",
                     [graph(fig_dbscan_sizes())],
@@ -5166,7 +5220,6 @@ def _cb_segments(method):
     if method == "hierarchical":
         return html.Div(
             [
-                _cluster_feats_details("hierarchical"),
                 panel(
                     "Kesepakatan K-Means vs. CLARANS vs. Hierarchical",
                     [graph(fig_method_comparison())],
@@ -5187,7 +5240,6 @@ def _cb_segments(method):
     if method == "clarans":
         return html.Div(
             [
-                _cluster_feats_details("clarans"),
                 panel(
                     "Kesepakatan K-Means vs. CLARANS",
                     [graph(fig_method_comparison())],
@@ -5207,7 +5259,6 @@ def _cb_segments(method):
         )
     return html.Div(
         [
-            _cluster_feats_details("kmeans"),
             html.Div(
                 [
                     html.Div(
