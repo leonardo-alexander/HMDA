@@ -2283,14 +2283,16 @@ def vlabel(v):
 
 CONTROL_WRAP_STYLE = {"minWidth": "180px", "flex": "1 1 180px"}
 
-# DTI is roughly debt over income, so it overlaps with income band and loan amount.
-# Selecting all three at once slices the sample down to a handful of applications, which
-# makes the resulting rate meaningless. The What-If tab therefore offers one basis at a
-# time; these wrapper ids let the mode switch hide and clear the unused controls.
+# DTI is monthly debt over monthly income, and the monthly payment itself is a function of
+# loan amount and term. So DTI already aggregates income, loan size, and duration: picking
+# it alongside those three double-counts the same financial fact and slices the sample down
+# to a handful of applications. The What-If tab therefore offers one basis at a time; these
+# wrapper ids let the mode switch hide and clear the unused controls.
 FIN_WRAP = {
     "debt_to_income_ratio": "wrap-dti",
     "income_band": "wrap-income",
     "loan_amount_band": "wrap-loan",
+    "term_band": "wrap-term",
 }
 
 
@@ -3080,21 +3082,21 @@ def _stat_tile(label, value, color=NAVY):
 
 
 # Load-test results, measured 26 Juli 2026 against app/index.py on the Flask development
-# server (localhost, Python 3.14, concurrency via thread pool). These are recorded
+# server (Python 3.14, concurrency via thread pool). These are recorded
 # measurements from one run, not values recomputed by the pipeline, so they are stated
 # with their environment rather than presented as live metrics.
 LOADTEST_COLD = [
-    ("Fase 1 - Prapemrosesan", 299, 28),
-    ("Fase 2 - Segmentasi", 21, 12),
-    ("Fase 3 - Aturan Asosiasi", 30, 12),
-    ("Fase 4 - Deteksi Anomali", 129, 276),
-    ("Fase 5 - Pelaporan & Keadilan", 193, 47),
+    ("Fase 1 - Preprocessing", 229, 51),
+    ("Fase 2 - Clustering", 8, 15),
+    ("Fase 3 - Association Rules", 25, 13),
+    ("Fase 4 - Anomaly Detection", 96, 279),
+    ("Fase 5 - Reporting & Fairness", 111, 53),
 ]
 LOADTEST_CONC = [
-    (1, 50.6, 20, 17, 35, 46),
-    (5, 207.7, 23, 22, 37, 46),
-    (10, 222.7, 43, 44, 57, 63),
-    (25, 217.4, 102, 110, 124, 130),
+    (1, 56.0, 18, 17, 32, 36),
+    (5, 228.3, 21, 22, 35, 37),
+    (10, 277.2, 33, 33, 41, 46),
+    (25, 298.0, 72, 80, 87, 90),
 ]
 
 WHY_LOADTEST = [
@@ -3113,24 +3115,24 @@ WHY_LOADTEST = [
         "biaya yang dibayar pengguna pertama setiap kali proses baru dimulai.",
     ),
     (
-        "Mengapa throughput berhenti di sekitar 220 req/s?",
-        "Karena ada bottleneck yang terserialisasi: GIL Python ditambah development server. "
-        "Buktinya terlihat dari pola angkanya - dari concurrency 5 ke 25 throughput tetap "
-        "(208 → 217 req/s) sementara latency naik hampir linear (22 → 110 ms). Artinya "
-        "permintaan tambahan tidak diproses lebih paralel, hanya mengantre lebih panjang.",
+        "Kenapa menaikkan concurrency tidak sepadan hasilnya?",
+        "Karena ada bagian kerja yang terserialisasi: GIL Python ditambah development server. "
+        "Dari concurrency 5 ke 25, jadi lima kali lipat, throughput cuma naik 1,3 kali dari "
+        "228 ke 298 req/s, sementara latency naik 3,6 kali dari 22 ke 80 ms. Jadi sebagian "
+        "besar permintaan tambahan berakhir mengantre, bukan diproses paralel.",
     ),
     (
-        "Mengapa angka ini bukan angka produksi?",
-        "Tiga sebab: (1) pengujian memakai Flask development server, yang secara eksplisit "
+        "Kenapa angka ini bukan angka produksi?",
+        "Tiga sebab. Pertama, pengujian memakai Flask development server yang secara eksplisit "
         "memperingatkan dirinya bukan untuk produksi, sedangkan Vercel memakai runtime WSGI "
-        "sendiri; (2) pengujian berjalan di localhost sehingga tanpa latency jaringan - payload "
-        "276 KB milik Fase 4 akan jauh lebih terasa pada koneksi nyata; (3) hanya satu mesin "
-        "penguji, tanpa variasi geografis. Angka ini valid sebagai profil relatif antar tab, "
+        "sendiri. Kedua, pengujian dijalankan tanpa latency jaringan, padahal payload 279 KB "
+        "milik Fase 4 akan jauh lebih terasa pada koneksi nyata. Ketiga, cuma satu instance "
+        "penguji tanpa variasi geografis. Angka ini valid sebagai profil relatif antar tab, "
         "bukan sebagai kapasitas produksi.",
     ),
     (
         "Apa implikasinya untuk deployment Vercel?",
-        "Cold start 2,44 detik dan memori 236 MB dibayar ulang setiap kali instance serverless "
+        "Cold start 2,9 detik dan memori 190 MB dibayar ulang setiap kali instance serverless "
         "baru dimulai, dan penyebab utamanya sama: hmda_approve_deny.csv berukuran 27 MB dibaca "
         "saat import. Merampingkan file itu ke kolom yang benar-benar dipakai What-If akan "
         "memangkas cold start, pemakaian memori, dan ukuran bundle sekaligus.",
@@ -3138,17 +3140,167 @@ WHY_LOADTEST = [
 ]
 
 
+WHY_FUNNEL = [
+    ("Kenapa 30 kolom demografi mentah tidak dipakai?",
+     "HMDA memecah ras dan etnis jadi lima kolom terpisah untuk pemohon dan lima lagi untuk "
+     "co-applicant, plus kolom penanda cara pengamatannya. Semua itu sudah diringkas HMDA "
+     "sendiri jadi derived_race, derived_ethnicity, dan derived_sex, yang justru dipakai di "
+     "tab Keadilan. Memakai versi mentahnya cuma menduplikasi informasi yang sama dalam "
+     "puluhan kolom."),
+    ("Kenapa hasil AUS dan alasan penolakan dibuang?",
+     "Keduanya baru ada setelah keputusan dibuat. AUS itu keluaran sistem underwriting "
+     "otomatis, dan denial_reason cuma terisi pada aplikasi yang memang ditolak. Kalau "
+     "denial_reason ikut dipakai untuk memprediksi penolakan, akurasinya bisa mendekati "
+     "sempurna tapi sama sekali tidak berguna, karena kolomnya kosong saat aplikasi baru masuk."),
+    ("Kenapa harga dan biaya dianggap leakage?",
+     "Interest rate, total loan costs, origination charges, dan rate spread baru ditentukan "
+     "ketika loan disetujui. Nilainya justru hasil dari keputusan yang sedang kita pelajari, "
+     "bukan penyebabnya. Ikut memasukkannya berarti menjelaskan keputusan dengan keputusan itu "
+     "sendiri."),
+    ("Kenapa jumlahnya tidak bisa dikurangi berurutan?",
+     "Karena ada kolom yang masuk dua kategori sekaligus. total_points_and_fees, "
+     "discount_points, dan lender_credits itu leakage sekaligus lebih dari 60% kosong, jadi "
+     "kalau angkanya dikurangi berantai, ketiganya terhitung dua kali. Itu sebabnya tabel di "
+     "atas menyajikan alasan per kategori, bukan sebagai pengurangan bertahap."),
+    ("Setelah disaring, bagaimana sisanya dinilai?",
+     "31 fitur yang lolos diberi skor gabungan dari korelasi dan mutual information terhadap "
+     "Originated vs Denied, lalu dikelompokkan jadi kandidat kuat, sedang, dan lemah. Yang "
+     "lemah tidak langsung dibuang, tetap dilaporkan supaya keputusannya bisa ditelusuri."),
+]
+
+
+WHY_VIF = [
+    ("Kenapa perlu VIF kalau sudah ada cek korelasi berpasangan?",
+     "Karena korelasi berpasangan cuma melihat dua fitur sekaligus, jadi buta terhadap "
+     "redundansi yang baru muncul saat beberapa fitur digabung. Sebuah fitur bisa punya "
+     "korelasi rendah terhadap setiap fitur lain satu per satu, tapi tetap bisa diprediksi "
+     "hampir sempurna dari kombinasi tiga fitur lainnya. VIF menangkap kasus itu."),
+    ("Kenapa ambangnya 10?",
+     "Karena VIF = 1 / (1 - R kuadrat), jadi VIF di atas 10 persis sama artinya dengan R "
+     "kuadrat di atas 0,90. Itu ambang yang sama dengan cek berpasangan, cuma diterapkan di "
+     "dimensi yang benar. Hasilnya konsisten: nol fitur melewati ambang, sejalan dengan nol "
+     "pasangan pada cek berpasangan."),
+    ("Kenapa DTI diuji terpisah?",
+     "Karena DTI sudah diubah jadi band, sehingga tidak ikut masuk ruang fitur numerik dan "
+     "tidak muncul di tabel VIF. Padahal justru DTI yang paling dicurigai tumpang tindih "
+     "dengan income dan besar loan. Uji terarah ini memetakan band DTI ke titik tengahnya, "
+     "lalu mencoba merekonstruksinya dari income, besar loan, nilai properti, dan rasio "
+     "loan terhadap income."),
+    ("Apa hasilnya, dan apa konsekuensinya?",
+     "R kuadrat cuma 0,100, setara VIF 1,11. Artinya 90% variasi DTI tidak bisa dijelaskan "
+     "oleh fitur ukuran, jadi DTI membawa informasi yang benar-benar berbeda dan keduanya "
+     "layak dipertahankan. Sisa variasi itu masuk akal secara struktural: utang non-hipotek "
+     "tidak terekam di HMDA, besar cicilan bergantung pada bunga dan tenor, dan DTI cuma "
+     "dilaporkan sebagai tujuh tingkat ordinal."),
+]
+
+
+def _vif_panel():
+    """Multicollinearity audit added in the notebook revision: VIF plus a targeted
+    test of whether DTI is just a restatement of the size features."""
+    vif_rows = [
+        ("tract_owner_occupied_units", 6.00), ("tract_one_to_four_family_homes", 4.05),
+        ("tract_population", 3.58), ("any_exempt_field", 2.95),
+        ("property_value_was_missing", 2.61), ("loan_term_was_missing", 2.29),
+        ("combined_loan_to_value_ratio_was_missing", 2.00),
+        ("tract_minority_population_percent", 1.51), ("loan_amount", 1.30),
+        ("property_value", 1.27),
+    ]
+    vif_df = pd.DataFrame([{"Fitur": f, "VIF": v} for f, v in vif_rows])
+    dti_df = pd.DataFrame([
+        {"Prediktor": "loan_to_income", "Spearman terhadap DTI": "+0,373"},
+        {"Prediktor": "log_income", "Spearman terhadap DTI": "-0,330"},
+        {"Prediktor": "log_loan_amount", "Spearman terhadap DTI": "+0,057"},
+        {"Prediktor": "log_property_value", "Spearman terhadap DTI": "+0,007"},
+    ])
+    return panel(
+        "Audit multikolinearitas: VIF dan uji rekonstruksi DTI",
+        [
+            html.Div(
+                [
+                    _stat_tile("Fitur numerik diuji", "17"),
+                    _stat_tile("VIF tertinggi", "6,00", STEEL),
+                    _stat_tile("Di atas ambang 10", "0", GREEN),
+                    _stat_tile("R² rekonstruksi DTI", "0,100", GREEN),
+                ],
+                style={"display": "flex", "gap": "14px", "flexWrap": "wrap",
+                       "marginBottom": "16px"},
+            ),
+            html.H4("VIF per fitur (10 tertinggi)",
+                    style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"}),
+            _table(vif_df),
+            html.H4("Bisakah DTI direkonstruksi dari fitur ukuran?",
+                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            _table(dti_df),
+            html.Div(
+                [
+                    html.B("Kesimpulan: DTI tidak bisa direkonstruksi. ",
+                           style={"fontSize": "12px", "color": NAVY}),
+                    html.Span(
+                        "R² = 0,100 setara VIF 1,11, jadi 90% variasi DTI tidak dijelaskan "
+                        "oleh income, besar loan, maupun nilai properti. DTI dan fitur ukuran "
+                        "membawa informasi berbeda dan sama-sama dipertahankan.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": "#eefaf1", "border": "1px solid #b7e4c7",
+                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
+            ),
+            why(WHY_VIF),
+        ],
+        sub="Dihitung pada 67.827 aplikasi berkeputusan; uji DTI memakai 62.618 baris "
+        "setelah 5.209 Exempt/Unknown dibuang.",
+    )
+
+
+def _feature_funnel_panel():
+    """Explains how 99 raw HMDA columns become the analysis feature set."""
+    rows = [
+        ("Kolom mentah HMDA", 99, "Titik awal sebelum penyaringan apa pun"),
+        ("Pengenal", 5, "lei, census_tract, county_code, dan sejenisnya. Penanda baris, bukan sifat pemohon"),
+        ("Demografi mentah", 30, "Sudah diringkas HMDA jadi derived_race, derived_ethnicity, derived_sex"),
+        ("Hasil AUS", 5, "Keluaran sistem underwriting otomatis, muncul setelah keputusan"),
+        ("Alasan penolakan", 4, "Cuma terisi pada aplikasi yang ditolak, jadi membocorkan jawabannya"),
+        ("Lebih dari 60% kosong", 6, "Missingness struktural, tidak bisa diimputasi tanpa mengarang"),
+        ("Harga dan biaya (leakage)", 13, "Interest rate, total loan costs, dan sejenisnya, ditentukan setelah persetujuan"),
+        ("Fitur yang diskor", 31, "Dinilai dengan korelasi dan mutual information"),
+    ]
+    df = pd.DataFrame(
+        [{"Kategori": k, "Jumlah kolom": n, "Alasan": r} for k, n, r in rows]
+    )
+    return panel(
+        "Dari 99 kolom mentah jadi 31 fitur analisis",
+        [
+            html.P(
+                "HMDA 2022 punya 99 kolom, tapi sebagian besar tidak layak dipakai untuk "
+                "menjelaskan keputusan persetujuan. Tabel ini merinci apa yang disaring dan "
+                "kenapa.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+            ),
+            _table(df),
+            html.P(
+                "Catatan: 3 kolom terhitung di dua kategori sekaligus, yaitu leakage dan "
+                "sekaligus lebih dari 60% kosong, jadi angka di atas tidak bisa dikurangi "
+                "berurutan.",
+                style={"fontSize": "11px", "color": MUTE, "margin": "10px 0 0"},
+            ),
+            why(WHY_FUNNEL),
+        ],
+        sub="Dari 31 fitur yang diskor: 11 kandidat kuat, 5 sedang, 11 lemah, 4 diagnostik proses.",
+    )
+
+
 def _load_test_panel():
     """Fase 5 reporting: measured performance profile of this dashboard."""
     tiles = html.Div(
         [
-            _stat_tile("Total request", "6.212"),
+            _stat_tile("Total request", "6.174"),
             _stat_tile("Error", "0", GREEN),
-            _stat_tile("Throughput puncak", "223 req/s", STEEL),
-            _stat_tile("Rata-rata warm", "20 ms", TEAL),
-            _stat_tile("Rata-rata sustained", "28 ms", TEAL),
-            _stat_tile("Cold start", "2,44 s", AMBER),
-            _stat_tile("Memori (RSS)", "236 MB", NAVY),
+            _stat_tile("Throughput puncak", "298 req/s", STEEL),
+            _stat_tile("Rata-rata warm", "18 ms", TEAL),
+            _stat_tile("Rata-rata sustained", "21 ms", TEAL),
+            _stat_tile("Cold start", "2,9 s", AMBER),
+            _stat_tile("Memori (RSS)", "190 MB", NAVY),
         ],
         style={
             "display": "flex",
@@ -3183,7 +3335,7 @@ def _load_test_panel():
         [
             html.P(
                 "Pengujian menembak endpoint callback yang benar-benar membangun tiap tab, "
-                "bukan sekadar halaman statis. Hasilnya: 6.212 request tanpa satu pun error.",
+                "bukan sekadar halaman statis. Hasilnya: 6.174 request tanpa satu pun error.",
                 style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
             ),
             tiles,
@@ -3218,9 +3370,9 @@ def _load_test_panel():
                         },
                     ),
                     html.P(
-                        "5.507 request · 0 error · rata-rata 28 ms · p50 28 ms · p95 45 ms · p99 58 ms · maks 85 ms. "
+                        "5.469 request · 0 error · rata-rata 21 ms · p50 21 ms · p95 35 ms · p99 45 ms · maks 76 ms. "
                         "Latency stabil sepanjang pengujian, tanpa degradasi progresif maupun "
-                        "indikasi kebocoran memori. Endpoint statis melayani 581-685 req/s.",
+                        "indikasi kebocoran memori. Endpoint statis melayani 530-634 req/s.",
                         style={
                             "fontSize": "12px",
                             "color": INK,
@@ -3237,7 +3389,7 @@ def _load_test_panel():
                         style={"fontSize": "12px", "color": NAVY},
                     ),
                     html.Span(
-                        "Pengujian memakai Flask development server di localhost, jadi tanpa "
+                        "Pengujian memakai Flask development server, jadi tanpa "
                         "latency jaringan dan bukan runtime yang dipakai Vercel. Angka warm juga "
                         "diuntungkan cache render. Perlakukan ini sebagai profil relatif antar "
                         "tab, bukan kapasitas produksi.",
@@ -3254,7 +3406,7 @@ def _load_test_panel():
             ),
             why(WHY_LOADTEST, "Mengapa diuji seperti ini, dan apa artinya? (klik)"),
         ],
-        sub="Diukur 26 Juli 2026 · Flask development server · Python 3.14 · localhost",
+        sub="Diukur 26 Juli 2026 · Flask development server · Python 3.14 · satu instance",
     )
 
 
@@ -3601,6 +3753,9 @@ def _fase1_content():
                 "dan diagnostik proses dikecualikan dari input Fase 2-4.",
             )
         )
+
+    children.append(_feature_funnel_panel())
+    children.append(_vif_panel())
 
     children.append(
         panel(
@@ -4304,7 +4459,8 @@ def render(tab):
             )
             for field, label, kind, order, default in WHATIF_FIELDS
         ] + [
-            render_control(field, label, kind, order, default, "ctx")
+            render_control(field, label, kind, order, default, "ctx",
+                           wrap_id=FIN_WRAP.get(field))
             for field, label, kind, order, default in CONTEXT_FIELDS
         ]
         return html.Div(
@@ -4318,17 +4474,22 @@ def render(tab):
                             options=[
                                 {"label": " Pakai DTI", "value": "dti"},
                                 {
-                                    "label": " Pakai band income + besar loan",
+                                    "label": " Pakai income + besar loan + durasi",
                                     "value": "income_loan",
                                 },
+                                {"label": " Semua (sampel bisa jadi kecil)", "value": "all"},
                             ],
                             inline=True,
                             style={"fontSize": "12px"},
                         )
                     ],
-                    sub="DTI, income, dan besar loan saling berkaitan, jadi memilih ketiganya "
-                    "sekaligus menyusutkan sampel sampai angkanya tidak bisa dipercaya. Pilih "
-                    "salah satu basis saja; yang tidak dipakai disembunyikan dan tidak ikut memfilter.",
+                    sub="Ini penjaga ukuran sampel, bukan klaim bahwa DTI dan fitur ukuran itu "
+                    "redundan. Uji rekonstruksi di Fase 1 justru menunjukkan sebaliknya: DTI cuma "
+                    "10% dijelaskan oleh income dan besar loan, jadi keduanya membawa informasi "
+                    "berbeda. Masalahnya di sini murni praktis, karena tiap filter tambahan "
+                    "mempersempit pencarian sampai tersisa segelintir aplikasi dan angkanya jadi "
+                    "tidak stabil. Pilih satu basis dulu, lalu pakai mode Semua kalau memang "
+                    "butuh menggabungkan keduanya.",
                 ),
                 panel(
                     "Bangun profil pemohon",
@@ -4618,9 +4779,11 @@ def _cb_rules_all_table(outcome, min_lift):
         Output("wrap-dti", "style"),
         Output("wrap-income", "style"),
         Output("wrap-loan", "style"),
+        Output("wrap-term", "style"),
         Output("wi-debt_to_income_ratio", "value"),
         Output("wi-income_band", "value"),
         Output("wi-loan_amount_band", "value"),
+        Output("ctx-term_band", "value"),
     ],
     Input("wi-fin-mode", "value"),
 )
@@ -4629,9 +4792,12 @@ def _cb_fin_mode(mode):
     selection cannot keep filtering invisibly."""
     shown = dict(CONTROL_WRAP_STYLE)
     hidden = {"display": "none"}
+    if mode == "all":
+        return (shown, shown, shown, shown,
+                no_update, no_update, no_update, no_update)
     if mode == "income_loan":
-        return hidden, shown, shown, "", no_update, no_update
-    return shown, hidden, hidden, no_update, "", ""
+        return hidden, shown, shown, shown, "", no_update, no_update, no_update
+    return shown, hidden, hidden, hidden, no_update, "", "", ""
 
 
 @app.callback(
@@ -4662,6 +4828,34 @@ def _cb_whatif(*values):
         if n < 30:
             note += f" Hati-hati, cuma {n:,} aplikasi yang cocok, jadi angkanya belum stabil."
     outcome_label = "Tingkat persetujuan historis gabungan"
+
+    def _base_delta(rate, matched, active_filters):
+        """Show the gap against the portfolio base rate.
+
+        Without this, a profile whose rate lands near the 77% base reads as if the filter
+        never ran, when in fact the attribute simply has little effect on approval.
+        """
+        if not active_filters or matched == 0 or not np.isfinite(BASE_APPROVAL):
+            return html.Div()
+        diff = rate - BASE_APPROVAL
+        if abs(diff) < 1:
+            color, verdict = MUTE, "praktis sama dengan rata-rata portfolio"
+        elif diff > 0:
+            color, verdict = GREEN, "lebih tinggi dari rata-rata portfolio"
+        else:
+            color, verdict = RED, "lebih rendah dari rata-rata portfolio"
+        return html.Div(
+            [
+                html.Span(
+                    f"{diff:+.1f} poin ",
+                    style={"fontWeight": "800", "fontSize": "17px", "color": color},
+                ),
+                html.Span(
+                    f"{verdict} ({BASE_APPROVAL:.1f}%)",
+                    style={"fontSize": "12.5px", "color": MUTE},
+                ),
+            ]
+        )
     return panel(
         "Hasil",
         [
@@ -4673,6 +4867,7 @@ def _cb_whatif(*values):
                     ),
                     html.Div(
                         [
+                            _base_delta(appr, n, active),
                             html.Div(
                                 note,
                                 style={
@@ -4681,22 +4876,14 @@ def _cb_whatif(*values):
                                     "lineHeight": "1.6",
                                 },
                             ),
-                            html.Div(
-                                "Direct historical-application lookup only. Do not use this result to approve, deny, price, or rank an individual application.",
-                                style={
-                                    "fontSize": "11px",
-                                    "color": RED,
-                                    "lineHeight": "1.5",
-                                    "marginTop": "10px",
-                                    "fontWeight": "700",
-                                },
-                            ),
                         ],
                         style={
                             "flex": "2",
                             "minWidth": "280px",
                             "display": "flex",
-                            "alignItems": "center",
+                            "flexDirection": "column",
+                            "justifyContent": "center",
+                            "gap": "8px",
                         },
                     ),
                 ],

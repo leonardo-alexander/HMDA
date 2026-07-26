@@ -2,6 +2,7 @@ criterion,status,evidence
 5.1 Data Cleaning,PASS,0 missing cells after handling; duplicate check recorded (5 removed).
 5.1 Data Transformation,PASS,Domain binning plus phase-appropriate StandardScaler/RobustScaler matrices.
 5.1 Feature Selection,PASS,"Correlation, redundancy screening, and entropy-based Mutual Information documented."
+5.1 Multicollinearity Audit,PASS,VIF computed for all numeric features; 0 above the VIF>10 threshold (equivalent to the pairwise r>0.90 rule of 9b).
 5.2 Algorithm Application,PASS,"K-Means, DBSCAN, and Ward hierarchical clustering executed."
 5.2 Optimal K Selection,PASS,Elbow=6; silhouette optimum=7; selected K=7.
 5.2 Cluster Profiling,PASS,"7 named segments with size, medians, approval, and business interpretation."

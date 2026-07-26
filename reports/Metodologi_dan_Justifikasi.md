@@ -80,6 +80,47 @@ dan `origination_charges` baru ada **setelah** aplikasi disetujui. Memakainya un
 persetujuan berarti menebak hasil dari hasil: akurasinya tampak tinggi tetapi tidak berguna, karena
 saat aplikasi baru masuk field tersebut belum ada.
 
+### 1.6b Audit multikolinearitas: VIF dan uji rekonstruksi DTI
+
+Cek korelasi berpasangan hanya melihat dua fitur sekaligus, sehingga buta terhadap
+redundansi yang baru muncul ketika beberapa fitur digabung. Sebuah fitur bisa berkorelasi
+rendah terhadap setiap fitur lain satu per satu, tetapi tetap dapat diprediksi hampir
+sempurna dari kombinasi beberapa fitur lainnya.
+
+**VIF (Variance Inflation Factor).** Dihitung pada 17 fitur numerik dari 67.827 baris
+lengkap. Karena VIF = 1 / (1 − R²), ambang VIF > 10 persis setara dengan R² > 0,90, yaitu
+ambang yang sama dengan cek berpasangan namun diterapkan pada dimensi yang benar.
+
+| Fitur | VIF |
+|---|---|
+| tract_owner_occupied_units | 6,00 |
+| tract_one_to_four_family_homes | 4,05 |
+| tract_population | 3,58 |
+| any_exempt_field | 2,95 |
+| property_value_was_missing | 2,61 |
+
+**Hasil: 0 fitur melewati ambang**, konsisten dengan 0 pasangan pada cek berpasangan.
+
+**Uji terarah: dapatkah DTI direkonstruksi dari fitur ukuran?** DTI sudah diubah menjadi
+band sehingga tidak masuk ruang fitur numerik dan tidak muncul di tabel VIF, padahal
+justru DTI yang paling dicurigai tumpang tindih dengan income dan besar loan. Band DTI
+dipetakan ke titik tengahnya, lalu direkonstruksi dari income, besar loan, nilai properti,
+dan rasio loan terhadap income. Rasio dibentuk eksplisit karena bentuk tumpang tindih yang
+dipertanyakan memang rasio, dan korelasi Pearson pada kolom mentah tidak dapat melihatnya.
+
+| Prediktor | Spearman terhadap DTI |
+|---|---|
+| loan_to_income | +0,373 |
+| log_income | −0,330 |
+| log_loan_amount | +0,057 |
+| log_property_value | +0,007 |
+
+**Hasil: R² = 0,100, setara VIF 1,11.** DTI **tidak** dapat direkonstruksi dari fitur
+ukuran. Sisa variasi 90% sejalan dengan tiga alasan struktural: utang non-hipotek tidak
+terekam di HMDA, besar cicilan bergantung pada bunga dan tenor, dan DTI hanya diterbitkan
+sebagai tujuh tingkat ordinal. Keduanya membawa informasi berbeda sehingga sama-sama
+dipertahankan.
+
 ### 1.7 Mengapa winsorize 1%/99%, dan mengapa hanya pada salinan clustering?
 
 **Alasan:** K-Means meminimalkan jarak kuadrat, sehingga satu properti $130 juta dapat menarik
@@ -333,6 +374,8 @@ publik ini (lihat 5.1) dan berisiko dipakai seolah keputusan underwriting.
 | 4 | Jejak imputasi | `_was_missing` | Auditabilitas; dikecualikan dari pemodelan |
 | 5 | Partisi fitur | 5 tipe | Cegah ordinality palsu; validasi cakupan penuh |
 | 6 | Fitur pasca-keputusan | Dikecualikan | Cegah leakage |
+| 6b | Audit multikolinearitas | VIF ambang 10 | Cek berpasangan buta terhadap redundansi multivariat; 0 fitur melewati ambang |
+| 6c | Uji rekonstruksi DTI | Dipertahankan | R² hanya 0,100, DTI membawa informasi yang tidak ada di fitur ukuran |
 | 7 | Winsorize 1/99% | Hanya salinan clustering | Cegah centroid tertarik outlier; nilai asli utuh untuk Fase 4 |
 | 8 | Scaler clustering | StandardScaler | Jarak Euclidean butuh fitur setara |
 | 9 | Scaler anomali | RobustScaler | Median/IQR tak terdistorsi outlier yang dicari |

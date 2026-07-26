@@ -66,6 +66,11 @@ data/
   interim/                    Keluaran Fase 1: hmda_clean, hmda_approve_deny, hmda_denials
   processed/                  Keluaran Fase 2-4 + seluruh agregat dash_*.csv
 
+scripts/
+  loadtest.py                 Uji beban dashboard: latency, throughput, error.
+                              Jalankan app dulu, lalu:
+                              python scripts/loadtest.py http://127.0.0.1:8051
+
 results/
   figures/                    Seluruh plot PNG Fase 1-4
   tables/                     Audit seleksi fitur, signifikansi aturan, audit rubric
@@ -150,6 +155,13 @@ kontinu diimputasi **median** (tahan skew & outlier, auditable — KNN dihindari
 sulit dijelaskan ke regulator, dan berisiko menanamkan korelasi buatan yang lalu "ditemukan"
 di Fase 3); kategorikal diisi `"Unknown"` karena kekosongan bermakna. Fitur pasca-keputusan
 (interest_rate, total_loan_costs) dikecualikan untuk mencegah **leakage**.
+
+**Audit multikolinearitas.** Cek korelasi berpasangan dilengkapi **VIF** pada 17 fitur
+numerik; ambang VIF > 10 setara R² > 0,90 dan **tidak ada fitur yang melewatinya**. Karena
+DTI sudah dibinning sehingga luput dari tabel VIF, ditambahkan uji terarah: DTI dipetakan
+ke titik tengah band lalu direkonstruksi dari income, besar loan, nilai properti, dan rasio
+loan-terhadap-income. Hasilnya **R² = 0,100** (setara VIF 1,11), jadi DTI **tidak** bisa
+direkonstruksi dari fitur ukuran dan keduanya dipertahankan.
 
 **Penskalaan berbeda per tujuan.** Clustering memakai winsorize 1/99% + `StandardScaler`
 (jarak Euclidean butuh fitur setara). Deteksi anomali memakai `RobustScaler` — median dan
