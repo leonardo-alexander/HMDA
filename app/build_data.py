@@ -97,6 +97,8 @@ def run_phase2(clean, appdeny):
         clean, CLUSTER_CONT_PART, CLUSTER_FLAGS, CLUSTER_FEATS, ANOMALY_FEATS, RANDOM_STATE)
 
     elbow_k, sil_k, BEST_K, k_selection = p2.select_k(Xc, range(2, 11), RANDOM_STATE)
+    k_selection.assign(elbow_k=elbow_k, sil_k=sil_k, best_k=BEST_K).to_csv(
+        DATA_PROCESSED / "dash_k_selection.csv", index=False)
     clean["kmeans_cluster"] = p2.run_kmeans(Xc, BEST_K, RANDOM_STATE)
     db_labels, dbscan_noise_ids, eps, min_samples, kdist = p2.run_dbscan(Xc, idx_med, CLUSTER_FEATS)
     hier_labels, Zward = p2.run_hierarchical(Xc, idx_small, BEST_K)
@@ -465,6 +467,65 @@ def build_phase1_distributions(clean):
     print(f"Phase 1 distributions: {len(stats)} features x 40 bins")
 
 
+def build_detector_comparison(clean):
+    """Systematic side-by-side of the five detectors, plus how anomalies map onto clusters.
+
+    The rubric asks for IQR / Z-score / Isolation Forest to be compared systematically and for
+    the anomaly results to be tied back to the clustering. Both need the flag columns, so they
+    are derived here once Phase 4 has populated them.
+    """
+    detectors = [
+        ("IQR", "flag_iqr", "Global", ">=3 fitur di luar 1,5xIQR"),
+        ("Z-score", "flag_z", "Global", ">=1 fitur |z| > 3"),
+        ("Isolation Forest", "flag_iso", "Global", "contamination 1%, 200 pohon"),
+        ("Local Outlier Factor", "lof_flag", "Kontekstual", "20 tetangga, contamination 1%"),
+        ("DBSCAN-noise", "dbscan_noise", "Kontekstual", "titik noise dari Fase 2"),
+    ]
+    n = len(clean)
+    rows = []
+    for name, col, kind, param in detectors:
+        if col not in clean.columns:
+            continue
+        flagged = (clean[col] == 1)
+        rows.append({
+            "detector": name, "philosophy": kind, "parameter": param,
+            "flagged": int(flagged.sum()),
+            "pct": round(flagged.mean() * 100, 2),
+            "median_votes": float(clean.loc[flagged, "anomaly_votes"].median())
+            if flagged.any() else np.nan,
+        })
+    pd.DataFrame(rows).to_csv(DATA_PROCESSED / "dash_detector_comparison.csv", index=False)
+
+    # Pairwise Jaccard overlap: how much do the detectors actually agree?
+    cols = [c for _, c, _, _ in detectors if c in clean.columns]
+    names = [nm for nm, c, _, _ in detectors if c in clean.columns]
+    ov = []
+    for i, a_col in enumerate(cols):
+        for j, b_col in enumerate(cols):
+            if j <= i:
+                continue
+            A, B = clean[a_col] == 1, clean[b_col] == 1
+            union = int((A | B).sum())
+            ov.append({"a": names[i], "b": names[j],
+                       "jaccard": round(int((A & B).sum()) / union, 3) if union else 0.0,
+                       "both": int((A & B).sum())})
+    pd.DataFrame(ov).to_csv(DATA_PROCESSED / "dash_detector_overlap.csv", index=False)
+
+    # Anomaly rate per cluster: the link between Phase 2 and Phase 4.
+    if "kmeans_cluster" in clean.columns:
+        g = clean.groupby("kmeans_cluster").apply(
+            lambda x: pd.Series({
+                "n": len(x),
+                "high_conf": int((x["anomaly_votes"] >= 3).sum()),
+                "pct_high_conf": round((x["anomaly_votes"] >= 3).mean() * 100, 2),
+                "mean_votes": round(float(x["anomaly_votes"].mean()), 3),
+                "mean_iso_score": round(float(x["iso_score"].mean()), 4),
+            }), include_groups=False).reset_index()
+        g.to_csv(DATA_PROCESSED / "dash_anomaly_by_cluster.csv", index=False)
+        print(f"Detector comparison: {len(rows)} detectors, {len(ov)} pairs, "
+              f"{len(g)} clusters")
+
+
 def build_context_fields(appdeny):
     # Contextual (non-demographic) fields for the What-If "more context" section. These
     # deliberately exclude derived_race/derived_ethnicity/derived_sex/tract_minority_cat --
@@ -501,6 +562,7 @@ def main():
     build_geography_gap(piv_rate, piv_n)
     build_gender_gap(appdeny)
     build_phase1_distributions(clean)
+    build_detector_comparison(clean)
     build_state_aggregates(clean, appdeny, denials)
     build_term_aggregates(appdeny)
     build_context_fields(appdeny)

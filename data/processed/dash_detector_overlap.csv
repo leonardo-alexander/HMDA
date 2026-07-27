@@ -1,0 +1,11 @@
+a,b,jaccard,both
+IQR,Z-score,0.241,2516
+IQR,Isolation Forest,0.138,978
+IQR,Local Outlier Factor,0.011,80
+IQR,DBSCAN-noise,0.044,338
+Z-score,Isolation Forest,0.098,610
+Z-score,Local Outlier Factor,0.013,79
+Z-score,DBSCAN-noise,0.028,187
+Isolation Forest,Local Outlier Factor,0.047,54
+Isolation Forest,DBSCAN-noise,0.048,87
+Local Outlier Factor,DBSCAN-noise,0.028,30

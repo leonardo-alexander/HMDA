@@ -183,6 +183,24 @@ check("Aplikasi berkeputusan", len(ad), 67827, 0)
 check("Base approval (%)", ad["target_approved"].mean() * 100, 76.9, 0.1)
 check("Base denial (%)", (1 - ad["target_approved"].mean()) * 100, 23.1, 0.1)
 
+
+# Rubric additions: K selection, detector comparison, anomaly-cluster link.
+ks = load("dash_k_selection.csv")
+if ks is not None:
+    check("K terpilih", int(ks["best_k"].iloc[0]), 7, 0)
+    check("Rentang K diuji", len(ks), 9, 0)
+    check("Silhouette tertinggi", float(ks["silhouette"].max()), 0.303, 0.005)
+
+dc = load("dash_detector_comparison.csv")
+if dc is not None:
+    check("Jumlah detektor", len(dc), 5, 0)
+    _iso = dc[dc["detector"] == "Isolation Forest"].iloc[0]
+    check("Isolation Forest ditandai (%)", _iso["pct"], 1.0, 0.05)
+
+abc = load("dash_anomaly_by_cluster.csv")
+if abc is not None:
+    check("Cluster pada peta anomali", len(abc), 7, 0)
+
 # ---------------------------------------------------------------- report
 fails = [r for r in results if not r[0]]
 for ok, label, actual, expected in results:

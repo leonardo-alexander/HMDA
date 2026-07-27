@@ -1,0 +1,6 @@
+detector,philosophy,parameter,flagged,pct,median_votes
+IQR,Global,">=3 fitur di luar 1,5xIQR",7085,7.09,1.0
+Z-score,Global,>=1 fitur |z| > 3,5854,5.85,1.0
+Isolation Forest,Global,"contamination 1%, 200 pohon",1000,1.0,3.0
+Local Outlier Factor,Kontekstual,"20 tetangga, contamination 1%",200,0.2,2.0
+DBSCAN-noise,Kontekstual,titik noise dari Fase 2,895,0.9,1.0
