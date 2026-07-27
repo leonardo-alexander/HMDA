@@ -87,7 +87,7 @@ check("Manufactured CLARANS purity", man_s["clarans_purity_4k"], 1.0, 0.001)
 # ---------------------------------------------------------------- Phase 3
 cand = load("p3_decision_rules.csv")
 fin = load("p3_decision_rules_final.csv")
-check("Aturan kandidat", len(cand), 28, 0)
+check("Aturan kandidat", len(cand), 29, 0)
 check("Aturan final", len(fin), 11, 0)
 check("Kandidat diambil", int((cand["kept"] == "Ya").sum()), 11, 0)
 
@@ -200,6 +200,13 @@ if dc is not None:
 abc = load("dash_anomaly_by_cluster.csv")
 if abc is not None:
     check("Cluster pada peta anomali", len(abc), 7, 0)
+
+
+ad_drv = load("dash_anomaly_drivers.csv")
+if ad_drv is not None:
+    check("Segmen dengan profil pendorong", ad_drv["kmeans_cluster"].nunique(), 7, 0)
+    _top = ad_drv.sort_values("deviation", ascending=False).iloc[0]
+    check("Pendorong terkuat (kelipatan)", _top["ratio"], 12.28, 0.05)
 
 # ---------------------------------------------------------------- report
 fails = [r for r in results if not r[0]]

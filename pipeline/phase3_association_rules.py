@@ -35,7 +35,7 @@ def mine_frequent_itemsets(onehot, min_support=0.02, max_len=3):
     return apriori(onehot, min_support=min_support, use_colnames=True, max_len=max_len, low_memory=True)
 
 
-def extract_decision_rules(frequent, onehot, decision_items, min_lift=1.2, min_confidence=0.55):
+def extract_decision_rules(frequent, onehot, decision_items, min_lift=1.2, min_confidence=0.50):
     supp_lookup = {frozenset(s): float(v) for s, v in zip(frequent["itemsets"], frequent["support"])}
 
     def _item_mean(col):

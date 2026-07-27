@@ -1,0 +1,15 @@
+kmeans_cluster,feature,median_normal,median_flagged,ratio,n_flagged,deviation
+2,property_value,375000.0,4605000.0,12.28,209,11.28
+2,loan_amount,205000.0,2505000.0,12.22,209,11.22
+5,property_value,375000.0,2770000.0,7.39,32,6.39
+3,property_value,375000.0,2605000.0,6.95,50,5.95
+1,property_value,425000.0,2795000.0,6.58,347,5.58
+6,property_value,375000.0,2455000.0,6.55,53,5.55
+0,property_value,375000.0,2115000.0,5.64,37,4.64
+0,loan_amount,295000.0,1605000.0,5.44,37,4.44
+4,property_value,205000.0,915000.0,4.46,11,3.46
+4,loan_amount,115000.0,495000.0,4.3,11,3.3
+6,loan_amount,205000.0,845000.0,4.12,53,3.12
+5,loan_amount,65000.0,250000.0,3.85,32,2.85
+3,loan_amount,215000.0,770000.0,3.58,50,2.58
+1,loan_amount,475000.0,1535000.0,3.23,347,2.23

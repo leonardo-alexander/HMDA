@@ -526,6 +526,114 @@ def build_detector_comparison(clean):
               f"{len(g)} clusters")
 
 
+def build_anomaly_drivers(clean):
+    """What actually makes a record anomalous, per segment.
+
+    A list of extreme rows shows the numbers but not the reason. This compares flagged rows
+    against their own segment's normal population, feature by feature, so each segment gets a
+    plain statement like "anomalies here are driven by loan_amount at 8x the segment median".
+    Comparing within-segment matters: a $2M loan is unremarkable in the jumbo segment and very
+    unusual in the small-loan one.
+    """
+    feats = ["income", "loan_amount", "property_value",
+             "combined_loan_to_value_ratio", "loan_term"]
+    feats = [f for f in feats if f in clean.columns]
+    if "anomaly_votes" not in clean.columns or "kmeans_cluster" not in clean.columns:
+        return
+    rows = []
+    for cid, g in clean.groupby("kmeans_cluster"):
+        flagged = g[g["anomaly_votes"] >= 3]
+        normal = g[g["anomaly_votes"] == 0]
+        if len(flagged) < 5 or len(normal) < 50:
+            continue
+        for f in feats:
+            fv = pd.to_numeric(flagged[f], errors="coerce").median()
+            nv = pd.to_numeric(normal[f], errors="coerce").median()
+            if pd.isna(fv) or pd.isna(nv) or nv == 0:
+                continue
+            rows.append({
+                "kmeans_cluster": int(cid),
+                "feature": f,
+                "median_normal": round(float(nv), 2),
+                "median_flagged": round(float(fv), 2),
+                "ratio": round(float(fv) / float(nv), 2),
+                "n_flagged": int(len(flagged)),
+            })
+    out = pd.DataFrame(rows)
+    if len(out):
+        # Keep the single strongest driver per segment: the feature whose flagged median
+        # departs furthest from the segment's own normal median, in either direction.
+        out["deviation"] = (out["ratio"] - 1).abs()
+        top = out.sort_values("deviation", ascending=False).groupby("kmeans_cluster").head(2)
+        top.to_csv(DATA_PROCESSED / "dash_anomaly_drivers.csv", index=False)
+        print(f"Anomaly drivers: {out['kmeans_cluster'].nunique()} segments profiled")
+
+
+def build_anomaly_reasons(clean, random_state=RANDOM_STATE):
+    """Per-row anomaly reason for the scatter hover, computed vectorised.
+
+    For every sampled row, find which feature departs furthest from that row's OWN segment
+    median and phrase it in plain language. Comparing within-segment is the point: a $2M loan
+    is ordinary in the jumbo segment and very unusual in the small-loan one, so a global
+    threshold would mislabel both.
+    """
+    labels = {
+        "income": "Income",
+        "loan_amount": "Loan amount",
+        "property_value": "Property value",
+        "combined_loan_to_value_ratio": "CLTV",
+        "loan_term": "Loan term",
+    }
+    feats = [f for f in labels if f in clean.columns]
+    if not feats or "kmeans_cluster" not in clean.columns:
+        return
+
+    sample = clean.sample(min(8000, len(clean)), random_state=random_state).copy()
+    med = clean.groupby("kmeans_cluster")[feats].median()
+
+    # Ratio of each feature to its own segment median, as one aligned frame.
+    seg_med = med.reindex(sample["kmeans_cluster"]).to_numpy(dtype=float)
+    vals = sample[feats].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(seg_med != 0, vals / seg_med, np.nan)
+    dev = np.abs(ratio - 1.0)
+    dev = np.where(np.isfinite(dev), dev, -1.0)
+
+    best_i = dev.argmax(axis=1)
+    rows = np.arange(len(sample))
+    best_ratio = ratio[rows, best_i]
+    best_name = np.array([labels[feats[i]] for i in best_i])
+
+    votes = pd.to_numeric(sample.get("anomaly_votes", 0), errors="coerce").fillna(0).to_numpy()
+    factor = np.where(best_ratio >= 1, best_ratio, np.where(best_ratio > 0, 1 / best_ratio, np.nan))
+    arah = np.where(best_ratio >= 1, "lebih besar", "lebih kecil")
+
+    reason = np.where(
+        votes < 1,
+        "Tidak ditandai detektor mana pun",
+        np.where(
+            np.isfinite(factor),
+            np.char.add(
+                np.char.add(np.char.add(best_name, " "),
+                            np.array([f"{v:.1f}x " if np.isfinite(v) else "" for v in factor])),
+                np.char.add(arah, " dari median segmennya"),
+            ),
+            "Ditandai, pendorong utama tidak teridentifikasi",
+        ),
+    )
+    sample["anomaly_reason"] = reason
+
+    cols = [c for c in ["kmeans_cluster", "income", "loan_amount", "property_value",
+                        "combined_loan_to_value_ratio", "debt_to_income_ratio",
+                        "derived_race", "loan_purpose", "occupancy_type", "action_taken",
+                        "_approved", "anomaly_votes", "iso_score",
+                        "tract_minority_population_percent", "anomaly_reason"]
+            if c in sample.columns]
+    sample[cols].to_csv(DATA_PROCESSED / "dash_scatter.csv", index=False)
+    n_named = int((votes >= 1).sum())
+    print(f"Anomaly reasons: {n_named:,} baris ditandai diberi alasan")
+
+
 def build_context_fields(appdeny):
     # Contextual (non-demographic) fields for the What-If "more context" section. These
     # deliberately exclude derived_race/derived_ethnicity/derived_sex/tract_minority_cat --
@@ -563,6 +671,8 @@ def main():
     build_gender_gap(appdeny)
     build_phase1_distributions(clean)
     build_detector_comparison(clean)
+    build_anomaly_drivers(clean)
+    build_anomaly_reasons(clean)
     build_state_aggregates(clean, appdeny, denials)
     build_term_aggregates(appdeny)
     build_context_fields(appdeny)

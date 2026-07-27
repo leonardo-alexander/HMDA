@@ -217,7 +217,7 @@ def build_standalone_dashboard(clean, appdeny, profile, final_rules, top_anom, f
         labels={"support": "Support", "confidence": "Confidence", "lift": "Lift"},
         title="Non-trivial, redundancy-pruned decision rules"
     )
-    fig_rules.add_hline(y=0.55, line_dash="dash", annotation_text="minimum confidence")
+    fig_rules.add_hline(y=0.50, line_dash="dash", annotation_text="minimum confidence")
     fig_rules.update_layout(template="plotly_white")
 
     anom_cols = ["loan_amount", "property_value", "combined_loan_to_value_ratio", "income",

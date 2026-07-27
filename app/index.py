@@ -452,6 +452,7 @@ k_selection = read("dash_k_selection.csv")  # elbow + silhouette per K
 detector_cmp = read("dash_detector_comparison.csv")  # per-detector counts
 detector_overlap = read("dash_detector_overlap.csv")  # pairwise Jaccard
 anomaly_by_cluster = read("dash_anomaly_by_cluster.csv")  # Phase 2 <-> Phase 4 link
+anomaly_drivers = read("dash_anomaly_drivers.csv")  # what drives a flag, per segment
 triage = _normalize_triage(
     read("p4_anomaly_triage.csv", index_col=0)
 )  # top-15 anomalies, verdict + evidence
@@ -4464,6 +4465,91 @@ WHY_SCALER_MAP = [
 ]
 
 
+WHY_ANOM_DRIVERS = [
+    ("Kenapa dibandingkan dengan median segmennya, bukan median seluruh data?",
+     "Karena kewajaran itu relatif. Loan $2 juta biasa saja di segmen jumbo, tetapi sangat "
+     "tidak lazim di segmen small-loan. Ambang global akan salah menilai keduanya sekaligus: "
+     "melewatkan yang aneh di segmen kecil, dan menuduh yang wajar di segmen besar."),
+    ("Apa temuan utamanya?",
+     "Pendorongnya seragam di ketujuh segmen, yaitu property value dan loan amount, bukan DTI "
+     "atau income. Artinya detektor ini pada praktiknya menyeleksi berdasarkan magnitudo "
+     "properti dan pinjaman, bukan berdasarkan kelayakan kredit."),
+    ("Kenapa itu penting bagi bisnis?",
+     "Karena antrean tinjauan manual akan didominasi transaksi bernilai besar yang sebenarnya "
+     "sah. Terbukti dari triase: seluruh 15 rekaman teratas berakhir RARE BUT VALID. Kalau "
+     "tujuannya menemukan risiko kredit, ambang berbasis magnitudo saja tidak cukup dan perlu "
+     "dilengkapi sinyal lain seperti rasio dan konsistensi internal."),
+    ("Kenapa rasio yang ditampilkan, bukan selisih?",
+     "Karena rasio bisa dibandingkan antar fitur dengan satuan berbeda. Selisih $2 juta pada "
+     "property value dan selisih 20 poin pada CLTV tidak setara, sedangkan 12x median segmen "
+     "dan 1,2x median segmen langsung bisa diurutkan."),
+]
+
+
+def _anomaly_drivers_panel():
+    """Plain-language statement of what actually drives anomaly flags, per segment."""
+    if anomaly_drivers is None or not len(anomaly_drivers):
+        return html.Div()
+    d = anomaly_drivers.copy()
+    d["segmen"] = d["kmeans_cluster"].map(clabel)
+    d["fitur"] = d["feature"].map(DIST_LABELS).fillna(d["feature"])
+    d = d.sort_values("deviation", ascending=False)
+
+    top = d.groupby("kmeans_cluster").head(1).sort_values("ratio", ascending=False)
+    f = px.bar(
+        top, x="ratio", y="segmen", orientation="h",
+        text=top.apply(lambda r: f"{r['fitur']} {r['ratio']:.1f}x", axis=1),
+        labels={"ratio": "Berapa kali lipat median segmennya", "segmen": ""},
+        color="ratio", color_continuous_scale="OrRd",
+    )
+    f.update_traces(textposition="outside", cliponaxis=False)
+    f.update_layout(template=TEMPLATE, height=360, coloraxis_showscale=False,
+                    title="Pendorong utama anomali di tiap segmen",
+                    margin=dict(l=10, r=10, t=44, b=10))
+
+    tbl = pd.DataFrame({
+        "Segmen": d["segmen"],
+        "Fitur pendorong": d["fitur"],
+        "Median normal": d["median_normal"].map(lambda v: f"{v:,.0f}"),
+        "Median anomali": d["median_flagged"].map(lambda v: f"{v:,.0f}"),
+        "Kelipatan": d["ratio"].map(lambda v: f"{v:.2f}x"),
+        "Anomali di segmen": d["n_flagged"].map(lambda v: f"{int(v):,}"),
+    })
+    return panel(
+        "Kenapa sebuah rekaman jadi anomali?",
+        [
+            html.P(
+                "Tiap rekaman yang ditandai dibandingkan dengan populasi normal di segmennya "
+                "sendiri, fitur demi fitur. Yang ditampilkan adalah fitur yang paling jauh "
+                "menyimpang, beserta berapa kali lipatnya.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 12px"},
+            ),
+            graph(f),
+            _table(tbl),
+            html.Div(
+                [
+                    html.B("Insight bisnis: anomali di sini soal ukuran, bukan kelayakan. ",
+                           style={"fontSize": "12.5px", "color": NAVY}),
+                    html.Span(
+                        "Di ketujuh segmen, pendorongnya property value dan loan amount, bukan "
+                        "DTI atau income. Contoh paling ekstrem ada di segmen investor: nilai "
+                        "properti yang ditandai 12,3 kali median normal segmennya. Konsekuensinya, "
+                        "antrean tinjauan akan penuh transaksi besar yang sah, persis seperti "
+                        "hasil triase yang seluruhnya RARE BUT VALID. Untuk menangkap risiko "
+                        "kredit, ambang magnitudo perlu dilengkapi uji konsistensi internal.",
+                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"background": BG, "borderRadius": "10px", "padding": "12px 14px",
+                       "margin": "14px 0"},
+            ),
+            why(WHY_ANOM_DRIVERS),
+        ],
+        sub="Dibandingkan dalam segmen masing-masing, karena kewajaran sebuah nilai bergantung "
+        "pada segmennya.",
+    )
+
+
 def _scaler_map_panel():
     """Which matrix and scaler each detector actually consumes."""
     df = pd.DataFrame(
@@ -6512,6 +6598,7 @@ def render(tab):
                     style={"display": "flex", "gap": "16px", "flexWrap": "wrap"},
                 ),
                 _detector_comparison_panel(),
+                _anomaly_drivers_panel(),
                 _anomaly_cluster_panel(),
                 _scaler_map_panel(),
                 _collective_groups_panel(),
