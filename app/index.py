@@ -3381,118 +3381,6 @@ WHY_FUNNEL = [
 ]
 
 
-WHY_VIF = [
-    (
-        "Kenapa perlu VIF kalau sudah ada cek korelasi berpasangan?",
-        "Karena korelasi berpasangan cuma melihat dua fitur sekaligus, jadi buta terhadap "
-        "redundansi yang baru muncul saat beberapa fitur digabung. Sebuah fitur bisa punya "
-        "korelasi rendah terhadap setiap fitur lain satu per satu, tapi tetap bisa diprediksi "
-        "hampir sempurna dari kombinasi tiga fitur lainnya. VIF menangkap kasus itu.",
-    ),
-    (
-        "Kenapa ambangnya 10?",
-        "Karena VIF = 1 / (1 - R kuadrat), jadi VIF di atas 10 persis sama artinya dengan R "
-        "kuadrat di atas 0,90. Itu ambang yang sama dengan cek berpasangan, cuma diterapkan di "
-        "dimensi yang benar. Hasilnya konsisten: nol fitur melewati ambang, sejalan dengan nol "
-        "pasangan pada cek berpasangan.",
-    ),
-    (
-        "Kenapa DTI diuji terpisah?",
-        "Karena DTI sudah diubah jadi band, sehingga tidak ikut masuk ruang fitur numerik dan "
-        "tidak muncul di tabel VIF. Padahal justru DTI yang paling dicurigai tumpang tindih "
-        "dengan income dan besar loan. Uji terarah ini memetakan band DTI ke titik tengahnya, "
-        "lalu mencoba merekonstruksinya dari income, besar loan, nilai properti, dan rasio "
-        "loan terhadap income.",
-    ),
-    (
-        "Apa hasilnya, dan apa konsekuensinya?",
-        "R kuadrat cuma 0,100, setara VIF 1,11. Artinya 90% variasi DTI tidak bisa dijelaskan "
-        "oleh fitur ukuran, jadi DTI membawa informasi yang benar-benar berbeda dan keduanya "
-        "layak dipertahankan. Sisa variasi itu masuk akal secara struktural: utang non-hipotek "
-        "tidak terekam di HMDA, besar cicilan bergantung pada bunga dan tenor, dan DTI cuma "
-        "dilaporkan sebagai tujuh tingkat ordinal.",
-    ),
-]
-
-
-def _vif_panel():
-    """Multicollinearity audit added in the notebook revision: VIF plus a targeted
-    test of whether DTI is just a restatement of the size features."""
-    vif_rows = [
-        ("tract_owner_occupied_units", 6.00),
-        ("tract_one_to_four_family_homes", 4.05),
-        ("tract_population", 3.58),
-        ("any_exempt_field", 2.95),
-        ("property_value_was_missing", 2.61),
-        ("loan_term_was_missing", 2.29),
-        ("combined_loan_to_value_ratio_was_missing", 2.00),
-        ("tract_minority_population_percent", 1.51),
-        ("loan_amount", 1.30),
-        ("property_value", 1.27),
-    ]
-    vif_df = pd.DataFrame([{"Fitur": f, "VIF": v} for f, v in vif_rows])
-    dti_df = pd.DataFrame(
-        [
-            {"Prediktor": "loan_to_income", "Spearman terhadap DTI": "+0,373"},
-            {"Prediktor": "log_income", "Spearman terhadap DTI": "-0,330"},
-            {"Prediktor": "log_loan_amount", "Spearman terhadap DTI": "+0,057"},
-            {"Prediktor": "log_property_value", "Spearman terhadap DTI": "+0,007"},
-        ]
-    )
-    return panel(
-        "Audit multikolinearitas: VIF dan uji rekonstruksi DTI",
-        [
-            html.Div(
-                [
-                    _stat_tile("Fitur numerik diuji", "17"),
-                    _stat_tile("VIF tertinggi", "6,00", STEEL),
-                    _stat_tile("Di atas ambang 10", "0", GREEN),
-                    _stat_tile("R² rekonstruksi DTI", "0,100", GREEN),
-                ],
-                style={
-                    "display": "flex",
-                    "gap": "14px",
-                    "flexWrap": "wrap",
-                    "marginBottom": "16px",
-                },
-            ),
-            html.H4(
-                "VIF per fitur (10 tertinggi)",
-                style={"fontSize": "13px", "color": NAVY, "margin": "6px 0 8px"},
-            ),
-            _table(vif_df),
-            html.H4(
-                "Bisakah DTI direkonstruksi dari fitur ukuran?",
-                style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"},
-            ),
-            _table(dti_df),
-            html.Div(
-                [
-                    html.B(
-                        "Kesimpulan: DTI tidak bisa direkonstruksi. ",
-                        style={"fontSize": "12px", "color": NAVY},
-                    ),
-                    html.Span(
-                        "R² = 0,100 setara VIF 1,11, jadi 90% variasi DTI tidak dijelaskan "
-                        "oleh income, besar loan, maupun nilai properti. DTI dan fitur ukuran "
-                        "membawa informasi berbeda dan sama-sama dipertahankan.",
-                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
-                    ),
-                ],
-                style={
-                    "background": "#eefaf1",
-                    "border": "1px solid #b7e4c7",
-                    "borderRadius": "10px",
-                    "padding": "12px 14px",
-                    "margin": "14px 0",
-                },
-            ),
-            why(WHY_VIF),
-        ],
-        sub="Dihitung pada 67.827 aplikasi berkeputusan; uji DTI memakai 62.618 baris "
-        "setelah 5.209 Exempt/Unknown dibuang.",
-    )
-
 
 WHY_PCA = [
     ("Berapa komponen PCA yang dipakai?",
@@ -3505,8 +3393,9 @@ WHY_PCA = [
      "komponen untuk 93,2%."),
     ("Berapa variansi yang tertangkap dua komponen itu?",
      "PC1 menjelaskan 16,7% dan PC2 15,2%, jadi totalnya cuma 31,9%. Sisanya 68,1% tidak "
-     "terlihat di gambar. Ini karena kesembilan fitur relatif tidak saling berkorelasi, "
-     "sejalan dengan audit VIF di Fase 1 yang menemukan nol fitur melewati ambang."),
+     "terlihat di gambar. Penyebabnya kesembilan fitur relatif tidak saling berkorelasi, "
+     "sehingga variansinya tersebar cukup merata alih-alih terkumpul di beberapa komponen "
+     "pertama."),
     ("Apa konsekuensinya untuk membaca scatter plot?",
      "Dua cluster yang tampak bertumpuk di gambar belum tentu benar-benar bertumpuk, karena "
      "bisa saja terpisah pada dimensi yang tidak digambar. Karena itu penilaian kualitas "
@@ -3737,220 +3626,6 @@ def _key_takeaways_panel():
     )
 
 
-WHY_COLLECTIVE_GROUPS = [
-    ("Kenapa hasilnya disebut tidak terbukti padahal ada 33 kelompok ditandai?",
-     "Karena ditandai Isolation Forest tidak sama dengan memenuhi definisi. Outlier kolektif "
-     "menuntut kelompok yang menyimpang sebagai kesatuan sementara anggotanya normal kalau "
-     "diperiksa satu per satu. Yang terjadi justru sebaliknya: 28 dari 33 kelompok punya "
-     "proporsi anggota anomali di atas baseline portfolio 11,0%, dengan median 19,1%. Jadi "
-     "kelompok itu menonjol karena memang berisi lebih banyak baris aneh, bukan karena ada "
-     "pola kolektif tersembunyi."),
-    ("Kenapa label pure collective tidak bisa dipakai sebagai bukti?",
-     "Karena ambangnya terlalu longgar untuk data ini. Kriterianya kurang dari 25% anggota "
-     "ditandai individual, padahal baseline portfolio cuma 11,0%. Artinya kelompok biasa pun "
-     "otomatis lolos. Terbukti 21 dari 33 kelompok berlabel pure collective, tetapi mayoritasnya "
-     "tetap di atas baseline, sehingga label itu tidak membedakan apa pun."),
-    ("Kalau begitu kenapa analisisnya tetap ditampilkan?",
-     "Karena hasil negatif juga hasil. Kelas outlier kolektif adalah bagian dari teori yang "
-     "wajib diperiksa, dan pemeriksaannya dijalankan penuh dengan lima skema pengelompokan. "
-     "Menyembunyikannya akan memberi kesan analisis tidak lengkap, sedangkan memaksakannya jadi "
-     "temuan akan mengarang sesuatu yang tidak didukung data."),
-    ("Apa yang sebenarnya ditangkap Isolation Forest di sini?",
-     "Sebagian besar efek ukuran kelompok dan geografi. Dari 33 kelompok, 15 berasal dari "
-     "yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, dan 14 dari negara bagian besar. "
-     "Kelompok kecil punya ringkasan yang tidak stabil sehingga mudah terlihat menyimpang."),
-    ("Apakah manufactured housing tetap temuan?",
-     "Ya, tetapi sebagai temuan segmen, bukan sebagai outlier kolektif. Buktinya kuat dan "
-     "lintas fase: persetujuan 43,1% berbanding portfolio 76,9%, cluster paling kohesif dengan "
-     "silhouette 0,495 dan purity 1,000, serta aturan asosiasi confidence 63,5% lift 2,75. "
-     "Proporsi anggota anomalinya 8,75% memang di bawah baseline, tetapi dua segmen lain lebih "
-     "rendah lagi yaitu 6,06% dan 5,32%, jadi angka itu tidak cukup untuk mengklaim kolektif."),
-]
-
-
-def _collective_taxonomy_card():
-    """Fourth taxonomy card: the collective class, reported as a negative result.
-
-    The group-level Isolation Forest does flag groups, but the evidence does not support
-    calling any of them a genuine collective anomaly, so the card says so rather than
-    presenting a count that would read as a discovery.
-    """
-    if collective_summary is None or not len(collective_summary):
-        return html.Div()
-    s = collective_summary.iloc[0]
-    return html.Div(
-        [
-            html.Div(
-                "OUTLIER KOLEKTIF",
-                style={"fontWeight": "800", "color": AMBER, "fontSize": "12px",
-                       "letterSpacing": "0.5px"},
-            ),
-            html.Div(
-                "Tidak terbukti",
-                style={"fontSize": "22px", "fontWeight": "800", "color": MUTE,
-                       "margin": "4px 0"},
-            ),
-            html.Div(
-                f"{int(s['flagged_groups'])} kelompok ditandai, tidak satu pun lolos uji",
-                style={"fontSize": "11px", "color": MUTE, "marginBottom": "8px"},
-            ),
-            html.Div(
-                "Outlier kolektif menuntut anggota yang normal secara individual. Justru "
-                "sebaliknya yang terjadi: 28 dari 33 kelompok yang ditandai punya proporsi "
-                "anggota anomali di atas baseline portfolio 11,0%, dengan median 19,1%. "
-                "Analisisnya dijalankan penuh dan hasilnya negatif, jadi dilaporkan apa adanya "
-                "alih-alih dipaksakan jadi temuan.",
-                style={"fontSize": "11.5px", "color": INK, "lineHeight": "1.5"},
-            ),
-        ],
-        className="hmda-card",
-        style={"flex": "1", "minWidth": "230px", "background": CARD,
-               "borderRadius": "14px", "padding": "14px 16px", "boxShadow": SOFT_SHADOW,
-               "border": f"1px solid {BORDER}", "borderTop": f"3px solid {MUTE}"},
-    )
-
-
-WHY_SCALER_MAP = [
-    ("Kenapa IQR dan Z-score tidak diskalakan sama sekali?",
-     "Karena keduanya sudah tidak bergantung pada skala. IQR bekerja pada kuartil per fitur, "
-     "dan Z-score memang membagi dengan standar deviasi fitur itu sendiri. Menskalakan lebih "
-     "dulu tidak mengubah baris mana yang ditandai, jadi cuma menambah langkah tanpa manfaat."),
-    ("Kenapa Isolation Forest dan LOF pakai RobustScaler?",
-     "Karena keduanya menghitung jarak atau partisi antar fitur, jadi skalanya harus setara. "
-     "Bedanya dengan clustering, di sini penskalaannya tidak boleh terseret outlier yang justru "
-     "sedang dicari. Mean dan standar deviasi tertarik nilai ekstrem sehingga outlier "
-     "menggelembungkan std dan skornya sendiri malah mengecil; median dan IQR tidak begitu."),
-    ("Kenapa DBSCAN-noise memakai matriks clustering, bukan matriks anomali?",
-     "Karena titik noise itu produk sampingan DBSCAN di Fase 2, dan DBSCAN dijalankan untuk "
-     "membentuk cluster. Konsekuensinya detektor kelima ini satu-satunya yang bekerja pada data "
-     "yang sudah di-winsorize, jadi paling tidak sensitif terhadap ekor distribusi. Itu bisa "
-     "diterima karena perannya melengkapi LOF pada sisi kontekstual, bukan menangkap magnitudo "
-     "ekstrem yang memang sudah ditangani tiga detektor global."),
-    ("Kenapa profil grup kolektif juga pakai RobustScaler?",
-     "Karena unit yang dibandingkan adalah median dan IQR antar kelompok, dan sebagian kelompok "
-     "berukuran kecil sehingga ringkasannya mudah bergeser. RobustScaler menjaga kelompok "
-     "ekstrem tetap menonjol alih-alih menekan skala seluruh kelompok lain."),
-]
-
-
-DIST_LABELS = {
-    "income": "Income ($ribu)",
-    "loan_amount": "Loan amount ($)",
-    "property_value": "Property value ($)",
-    "combined_loan_to_value_ratio": "CLTV (%)",
-    "loan_term": "Loan term (bulan)",
-}
-
-WHY_DISTRIBUTIONS = [
-    ("Kenapa distribusi ini penting dilihat?",
-     "Karena hampir semua keputusan prapemrosesan bersandar padanya. Alasan memilih median "
-     "alih-alih mean, dan alasan melakukan winsorize sebelum clustering, cuma masuk akal kalau "
-     "datanya memang menjulur jauh ke kanan. Grafik ini membuat klaim itu bisa dilihat, bukan "
-     "sekadar dipercaya."),
-    ("Seberapa parah kemencengannya?",
-     "Income punya skewness 296 dengan mean 2,76 kali median: rata-ratanya $262rb sementara "
-     "median cuma $95rb. Loan amount dan property value polanya sama, mean masing-masing 1,43 "
-     "dan 1,40 kali median. Itulah sebabnya mean akan mengisi nilai kosong dengan angka yang "
-     "jauh di atas pemohon kebanyakan."),
-    ("Kenapa sumbunya dipotong di persentil 99,5?",
-     "Karena ada satu property value sampai $800 juta dan income sampai $10 juta. Kalau "
-     "seluruh rentang dipaksa masuk, semua observasi nyata akan menumpuk jadi satu batang di "
-     "paling kiri dan grafiknya tidak terbaca. Nilai ekstremnya tidak dibuang, hanya tidak "
-     "digambar, dan justru itu yang jadi target Fase 4."),
-    ("Kenapa loan_term justru menceng ke kiri?",
-     "Karena tenor didominasi 360 bulan alias 30 tahun, dengan median tepat 360. Skewness-nya "
-     "negatif 1,82, jadi ekornya ada di sisi tenor pendek. Ini juga alasan tenor tidak ikut "
-     "dipakai sebagai fitur clustering."),
-]
-
-
-@lru_cache(maxsize=8)
-def fig_phase1_distribution(feature):
-    """Histogram of one Phase 1 continuous feature, with mean and median marked."""
-    if phase1_dist is None or not len(phase1_dist):
-        return blank("Data distribusi belum tersedia. Jalankan build_data.py dulu.")
-    d = phase1_dist[phase1_dist["feature"] == feature]
-    if not len(d):
-        return blank("Fitur tidak tersedia.")
-    label = DIST_LABELS.get(feature, feature)
-    f = go.Figure(go.Bar(
-        x=(d["bin_left"] + d["bin_right"]) / 2,
-        y=d["count"],
-        width=(d["bin_right"] - d["bin_left"]) * 0.95,
-        marker_color=STEEL,
-        name="Distribusi",
-        showlegend=False,
-        hovertemplate=f"{label}: %{{x:,.0f}}<br>Aplikasi: %{{y:,}}<extra></extra>",
-    ))
-    if phase1_dist_stats is not None and len(phase1_dist_stats):
-        st = phase1_dist_stats[phase1_dist_stats["feature"] == feature]
-        if len(st):
-            st = st.iloc[0]
-            ymax = float(d["count"].max())
-            # Drawn as real traces rather than annotated vlines: the two annotation labels
-            # sat at the same height and overlapped into unreadable text.
-            for value, color, dash, nm in (
-                (float(st["median"]), GREEN, "solid", f"Median {st['median']:,.0f}"),
-                (float(st["mean"]), RED, "dash", f"Mean {st['mean']:,.0f}"),
-            ):
-                f.add_trace(go.Scatter(
-                    x=[value, value], y=[0, ymax * 1.02], mode="lines",
-                    line=dict(color=color, width=2, dash=dash),
-                    name=nm, hovertemplate=f"{nm}<extra></extra>",
-                ))
-    f.update_layout(
-        template=TEMPLATE, height=380, bargap=0.02,
-        title=f"Distribusi {label} - sumbu dipotong di persentil 0,5 dan 99,5",
-        xaxis_title=label, yaxis_title="Jumlah aplikasi",
-        legend={"orientation": "h", "y": -0.18, "title": ""},
-        margin=dict(l=10, r=10, t=44, b=10),
-    )
-    return f
-
-
-def _phase1_distribution_panel():
-    """Interactive distribution view: the visual evidence behind the cleaning choices."""
-    if phase1_dist is None or not len(phase1_dist):
-        return html.Div()
-    opts = [{"label": DIST_LABELS.get(f, f), "value": f}
-            for f in phase1_dist["feature"].unique()]
-    stats_tbl = html.Div()
-    if phase1_dist_stats is not None and len(phase1_dist_stats):
-        st = phase1_dist_stats.copy()
-        stats_tbl = _table(pd.DataFrame({
-            "Fitur": st["feature"].map(lambda f: DIST_LABELS.get(f, f)),
-            "Median": st["median"].map(lambda v: f"{v:,.0f}"),
-            "Mean": st["mean"].map(lambda v: f"{v:,.0f}"),
-            "Mean / median": st["mean_over_median"].map(lambda v: f"{v:.2f}x"),
-            "Skewness": st["skew"].map(lambda v: f"{v:,.1f}"),
-            "Maksimum": st["max"].map(lambda v: f"{v:,.0f}"),
-        }))
-    return panel(
-        "Distribusi fitur kontinu: bukti di balik pilihan pembersihan",
-        [
-            html.P(
-                "Pilih fitur untuk melihat sebarannya. Garis hijau median, garis merah "
-                "putus-putus mean. Makin jauh keduanya, makin kuat alasan memakai median.",
-                style={"fontSize": "12px", "color": INK, "margin": "0 0 10px"},
-            ),
-            dcc.Dropdown(
-                id="p1-dist-feature",
-                options=opts,
-                value="income",
-                clearable=False,
-                style={"fontSize": "12px", "maxWidth": "320px", "marginBottom": "10px"},
-            ),
-            graph("p1-dist-chart"),
-            html.H4("Ringkasan sebaran",
-                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
-            stats_tbl,
-            why(WHY_DISTRIBUTIONS),
-        ],
-        sub="Dihitung pada 99.995 baris bersih. Sumbu dipotong di persentil 0,5 dan 99,5 agar "
-        "terbaca; nilai ekstremnya tidak dibuang dan justru jadi target Fase 4.",
-    )
-
-
 # Notebook step map. Mirrors the section order of HMDA.ipynb so the dashboard reads as a
 # complete report: every analytical step is listed, including the ones that produce a table or
 # an assertion rather than a chart. "hasil" is the outcome that step actually produced.
@@ -4106,6 +3781,124 @@ def _pipeline_steps_panel(phase):
     )
 
 
+DIST_LABELS = {
+    "income": "Income ($ribu)",
+    "loan_amount": "Loan amount ($)",
+    "property_value": "Property value ($)",
+    "combined_loan_to_value_ratio": "CLTV (%)",
+    "loan_term": "Loan term (bulan)",
+}
+
+WHY_DISTRIBUTIONS = [
+    ("Kenapa distribusi ini penting dilihat?",
+     "Karena hampir semua keputusan prapemrosesan bersandar padanya. Alasan memilih median "
+     "alih-alih mean, dan alasan melakukan winsorize sebelum clustering, cuma masuk akal kalau "
+     "datanya memang menjulur jauh ke kanan. Grafik ini membuat klaim itu bisa dilihat, bukan "
+     "sekadar dipercaya."),
+    ("Seberapa parah kemencengannya?",
+     "Income punya skewness 296 dengan mean 2,76 kali median: rata-ratanya $262rb sementara "
+     "median cuma $95rb. Loan amount dan property value polanya sama, mean masing-masing 1,43 "
+     "dan 1,40 kali median. Itulah sebabnya mean akan mengisi nilai kosong dengan angka yang "
+     "jauh di atas pemohon kebanyakan."),
+    ("Kenapa sumbunya dipotong di kedua ujung?",
+     "Karena ada property value sampai $800 juta di ujung atas, dan income negatif dari "
+     "kerugian usaha di ujung bawah. Tanpa pemotongan, seluruh observasi nyata menumpuk jadi "
+     "satu batang tipis. Nilai ekstremnya tidak dibuang dari data, hanya tidak digambar, dan "
+     "justru itu yang jadi target Fase 4."),
+    ("Kenapa loan_term justru menceng ke kiri?",
+     "Karena tenor didominasi 360 bulan alias 30 tahun, dengan median tepat 360. Skewness-nya "
+     "negatif 1,82, jadi ekornya ada di sisi tenor pendek. Ini juga alasan tenor tidak ikut "
+     "dipakai sebagai fitur clustering."),
+]
+
+
+@lru_cache(maxsize=8)
+def fig_phase1_distribution(feature):
+    """Histogram of one Phase 1 continuous feature, with mean and median as legend entries."""
+    if phase1_dist is None or not len(phase1_dist):
+        return blank("Data distribusi belum tersedia. Jalankan build_data.py dulu.")
+    d = phase1_dist[phase1_dist["feature"] == feature]
+    if not len(d):
+        return blank("Fitur tidak tersedia.")
+    label = DIST_LABELS.get(feature, feature)
+    f = go.Figure(go.Bar(
+        x=(d["bin_left"] + d["bin_right"]) / 2,
+        y=d["count"],
+        width=(d["bin_right"] - d["bin_left"]) * 0.95,
+        marker_color=STEEL,
+        name="Distribusi",
+        showlegend=False,
+        hovertemplate=f"{label}: %{{x:,.0f}}<br>Aplikasi: %{{y:,}}<extra></extra>",
+    ))
+    if phase1_dist_stats is not None and len(phase1_dist_stats):
+        st = phase1_dist_stats[phase1_dist_stats["feature"] == feature]
+        if len(st):
+            st = st.iloc[0]
+            ymax = float(d["count"].max())
+            # Drawn as real traces rather than annotated vlines: the two annotation labels
+            # sat at the same height and overlapped into unreadable text.
+            for value, color, dash, nm in (
+                (float(st["median"]), GREEN, "solid", f"Median {st['median']:,.0f}"),
+                (float(st["mean"]), RED, "dash", f"Mean {st['mean']:,.0f}"),
+            ):
+                f.add_trace(go.Scatter(
+                    x=[value, value], y=[0, ymax * 1.02], mode="lines",
+                    line=dict(color=color, width=2, dash=dash),
+                    name=nm, hovertemplate=f"{nm}<extra></extra>",
+                ))
+    f.update_layout(
+        template=TEMPLATE, height=380, bargap=0.02,
+        title=f"Distribusi {label} - sumbu dipotong di persentil 0,5 dan 99,5",
+        xaxis_title=label, yaxis_title="Jumlah aplikasi",
+        legend={"orientation": "h", "y": -0.18, "title": ""},
+        margin=dict(l=10, r=10, t=44, b=10),
+    )
+    return f
+
+
+def _phase1_distribution_panel():
+    """Interactive distribution view: the visual evidence behind the cleaning choices."""
+    if phase1_dist is None or not len(phase1_dist):
+        return html.Div()
+    opts = [{"label": DIST_LABELS.get(f, f), "value": f}
+            for f in phase1_dist["feature"].unique()]
+    stats_tbl = html.Div()
+    if phase1_dist_stats is not None and len(phase1_dist_stats):
+        st = phase1_dist_stats.copy()
+        stats_tbl = _table(pd.DataFrame({
+            "Fitur": st["feature"].map(lambda f: DIST_LABELS.get(f, f)),
+            "Median": st["median"].map(lambda v: f"{v:,.0f}"),
+            "Mean": st["mean"].map(lambda v: f"{v:,.0f}"),
+            "Mean / median": st["mean_over_median"].map(lambda v: f"{v:.2f}x"),
+            "Skewness": st["skew"].map(lambda v: f"{v:,.1f}"),
+            "Maksimum": st["max"].map(lambda v: f"{v:,.0f}"),
+        }))
+    return panel(
+        "Distribusi fitur kontinu: bukti di balik pilihan pembersihan",
+        [
+            html.P(
+                "Pilih fitur untuk melihat sebarannya. Garis hijau median, garis merah "
+                "putus-putus mean. Makin jauh keduanya, makin kuat alasan memakai median.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 10px"},
+            ),
+            dcc.Dropdown(
+                id="p1-dist-feature",
+                options=opts,
+                value="income",
+                clearable=False,
+                style={"fontSize": "12px", "maxWidth": "320px", "marginBottom": "10px"},
+            ),
+            graph("p1-dist-chart"),
+            html.H4("Ringkasan sebaran",
+                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            stats_tbl,
+            why(WHY_DISTRIBUTIONS),
+        ],
+        sub="Dihitung pada 99.995 baris bersih. Sumbu dipotong di persentil 0,5 dan 99,5 agar "
+        "terbaca; nilai ekstremnya tidak dibuang dan justru jadi target Fase 4.",
+    )
+
+
 WHY_ANOMALY_FEATS = [
     ("Kenapa fiturnya beda dari clustering?",
      "Karena tujuannya berlawanan. Clustering sengaja membuang loan_amount dan property_value "
@@ -4183,42 +3976,39 @@ def _anomaly_features_details():
     )
 
 
+WHY_SCALER_MAP = [
+    ("Kenapa IQR dan Z-score tidak diskalakan sama sekali?",
+     "Karena keduanya sudah tidak bergantung pada skala. IQR bekerja pada kuartil per fitur, "
+     "dan Z-score memang membagi dengan standar deviasi fitur itu sendiri. Menskalakan lebih "
+     "dulu tidak mengubah baris mana yang ditandai, jadi cuma menambah langkah tanpa manfaat."),
+    ("Kenapa Isolation Forest dan LOF pakai RobustScaler?",
+     "Karena keduanya menghitung jarak atau partisi antar fitur, jadi skalanya harus setara. "
+     "Bedanya dengan clustering, di sini penskalaannya tidak boleh terseret outlier yang justru "
+     "sedang dicari. Mean dan standar deviasi tertarik nilai ekstrem sehingga outlier "
+     "menggelembungkan std dan skornya sendiri malah mengecil; median dan IQR tidak begitu."),
+    ("Kenapa DBSCAN-noise memakai matriks clustering, bukan matriks anomali?",
+     "Karena titik noise itu produk sampingan DBSCAN di Fase 2, dan DBSCAN dijalankan untuk "
+     "membentuk cluster. Konsekuensinya detektor kelima ini satu-satunya yang bekerja pada data "
+     "yang sudah di-winsorize, jadi paling tidak sensitif terhadap ekor distribusi. Itu bisa "
+     "diterima karena perannya melengkapi LOF pada sisi kontekstual, bukan menangkap magnitudo "
+     "ekstrem yang memang sudah ditangani tiga detektor global."),
+    ("Kenapa profil grup kolektif juga pakai RobustScaler?",
+     "Karena unit yang dibandingkan adalah median dan IQR antar kelompok, dan sebagian kelompok "
+     "berukuran kecil sehingga ringkasannya mudah bergeser. RobustScaler menjaga kelompok "
+     "ekstrem tetap menonjol alih-alih menekan skala seluruh kelompok lain."),
+]
+
+
 def _scaler_map_panel():
     """Which matrix and scaler each detector actually consumes."""
-    df = pd.DataFrame(
-        [
-            {
-                "Metode": "IQR",
-                "Data": "nilai asli, tanpa matriks",
-                "Penskalaan": "tidak ada, sudah scale-invariant",
-            },
-            {
-                "Metode": "Z-score",
-                "Data": "nilai asli, tanpa matriks",
-                "Penskalaan": "tidak ada, sudah scale-invariant",
-            },
-            {
-                "Metode": "Isolation Forest",
-                "Data": "matriks anomali (8 fitur)",
-                "Penskalaan": "RobustScaler",
-            },
-            {
-                "Metode": "Local Outlier Factor",
-                "Data": "matriks anomali (8 fitur)",
-                "Penskalaan": "RobustScaler",
-            },
-            {
-                "Metode": "DBSCAN-noise",
-                "Data": "matriks clustering (9 fitur)",
-                "Penskalaan": "winsorize + StandardScaler",
-            },
-            {
-                "Metode": "Isolation Forest tingkat grup",
-                "Data": "profil median & IQR per grup",
-                "Penskalaan": "RobustScaler",
-            },
-        ]
-    )
+    df = pd.DataFrame([
+        {"Metode": "IQR", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
+        {"Metode": "Z-score", "Data": "nilai asli, tanpa matriks", "Penskalaan": "tidak ada, sudah scale-invariant"},
+        {"Metode": "Isolation Forest", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
+        {"Metode": "Local Outlier Factor", "Data": "matriks anomali (8 fitur)", "Penskalaan": "RobustScaler"},
+        {"Metode": "DBSCAN-noise", "Data": "matriks clustering (9 fitur)", "Penskalaan": "winsorize + StandardScaler"},
+        {"Metode": "Isolation Forest tingkat grup", "Data": "profil median & IQR per grup", "Penskalaan": "RobustScaler"},
+    ])
     return panel(
         "Matriks dan penskalaan tiap detektor",
         [
@@ -4230,7 +4020,7 @@ def _scaler_map_panel():
             _table(df),
             html.Div(
                 [
-                    html.B("Catatan. ", style={"fontSize": "12px", "color": NAVY}),
+                    html.B("Catatan kejujuran. ", style={"fontSize": "12px", "color": NAVY}),
                     html.Span(
                         "DBSCAN-noise mewarisi matriks clustering, sehingga satu-satunya detektor "
                         "yang bekerja pada data yang sudah di-winsorize. Artinya klaim bahwa "
@@ -4240,13 +4030,8 @@ def _scaler_map_panel():
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
-                style={
-                    "background": "#fff8e8",
-                    "border": "1px solid #f3d7a0",
-                    "borderRadius": "10px",
-                    "padding": "12px 14px",
-                    "margin": "14px 0",
-                },
+                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
+                       "borderRadius": "10px", "padding": "12px 14px", "margin": "14px 0"},
             ),
             why(WHY_SCALER_MAP),
         ],
@@ -4255,13 +4040,76 @@ def _scaler_map_panel():
     )
 
 
-def _collective_groups_panel():
-    """Group-level collective anomalies: all flagged groups, with their classification.
+WHY_COLLECTIVE_GROUPS = [
+    ("Kenapa hasilnya disebut tidak terbukti padahal ada 33 kelompok ditandai?",
+     "Karena ditandai Isolation Forest tidak sama dengan memenuhi definisi. Outlier kolektif "
+     "menuntut kelompok yang menyimpang sebagai kesatuan sementara anggotanya normal kalau "
+     "diperiksa satu per satu. Yang terjadi justru sebaliknya: 28 dari 33 kelompok punya "
+     "proporsi anggota anomali di atas baseline portfolio 11,0%, dengan median 19,1%. Jadi "
+     "kelompok itu menonjol karena memang berisi lebih banyak baris aneh, bukan karena ada "
+     "pola kolektif tersembunyi."),
+    ("Kenapa label pure collective tidak bisa dipakai sebagai bukti?",
+     "Karena ambangnya terlalu longgar untuk data ini. Kriterianya kurang dari 25% anggota "
+     "ditandai individual, padahal baseline portfolio cuma 11,0%. Artinya kelompok biasa pun "
+     "otomatis lolos. Terbukti 21 dari 33 kelompok berlabel pure collective, tetapi mayoritasnya "
+     "tetap di atas baseline, sehingga label itu tidak membedakan apa pun."),
+    ("Kalau begitu kenapa analisisnya tetap ditampilkan?",
+     "Karena hasil negatif juga hasil. Kelas outlier kolektif adalah bagian dari teori yang "
+     "wajib diperiksa, dan pemeriksaannya dijalankan penuh dengan lima skema pengelompokan. "
+     "Menyembunyikannya akan memberi kesan analisis tidak lengkap, sedangkan memaksakannya jadi "
+     "temuan akan mengarang sesuatu yang tidak didukung data."),
+    ("Apa yang sebenarnya ditangkap Isolation Forest di sini?",
+     "Sebagian besar efek ukuran kelompok dan geografi. Dari 33 kelompok, 15 berasal dari "
+     "yurisdiksi kecil seperti Hawaii, DC, dan Puerto Rico, dan 14 dari negara bagian besar. "
+     "Kelompok kecil punya ringkasan yang tidak stabil sehingga mudah terlihat menyimpang."),
+    ("Apakah manufactured housing tetap temuan?",
+     "Ya, tetapi sebagai temuan segmen, bukan sebagai outlier kolektif. Buktinya kuat dan "
+     "lintas fase: persetujuan 43,1% berbanding portfolio 76,9%, cluster paling kohesif dengan "
+     "silhouette 0,495 dan purity 1,000, serta aturan asosiasi confidence 63,5% lift 2,75. "
+     "Proporsi anggota anomalinya 8,75% memang di bawah baseline, tetapi dua segmen lain lebih "
+     "rendah lagi yaitu 6,06% dan 5,32%, jadi angka itu tidak cukup untuk mengklaim kolektif."),
+]
 
-    Every flagged group is listed rather than only the interesting ones, so the headline
-    count on the taxonomy card can be audited line by line. The classification column is
-    what separates the one well-supported finding from the small-jurisdiction effects.
-    """
+
+def _collective_taxonomy_card():
+    """Fourth taxonomy card: the collective class, reported as a negative result."""
+    if collective_summary is None or not len(collective_summary):
+        return html.Div()
+    s = collective_summary.iloc[0]
+    return html.Div(
+        [
+            html.Div(
+                "OUTLIER KOLEKTIF",
+                style={"fontWeight": "800", "color": AMBER, "fontSize": "12px",
+                       "letterSpacing": "0.5px"},
+            ),
+            html.Div(
+                "Tidak terbukti",
+                style={"fontSize": "22px", "fontWeight": "800", "color": MUTE,
+                       "margin": "4px 0"},
+            ),
+            html.Div(
+                f"{int(s['flagged_groups'])} kelompok ditandai, tidak satu pun lolos uji",
+                style={"fontSize": "11px", "color": MUTE, "marginBottom": "8px"},
+            ),
+            html.Div(
+                "Outlier kolektif menuntut anggota yang normal secara individual. Justru "
+                "sebaliknya yang terjadi: 28 dari 33 kelompok yang ditandai punya proporsi "
+                "anggota anomali di atas baseline portfolio 11,0%, dengan median 19,1%. "
+                "Analisisnya dijalankan penuh dan hasilnya negatif, jadi dilaporkan apa adanya "
+                "alih-alih dipaksakan jadi temuan.",
+                style={"fontSize": "11.5px", "color": INK, "lineHeight": "1.5"},
+            ),
+        ],
+        className="hmda-card",
+        style={"flex": "1", "minWidth": "230px", "background": CARD,
+               "borderRadius": "14px", "padding": "14px 16px", "boxShadow": SOFT_SHADOW,
+               "border": f"1px solid {BORDER}", "borderTop": f"3px solid {MUTE}"},
+    )
+
+
+def _collective_groups_panel():
+    """Group-level collective anomalies: all flagged groups, with their classification."""
     if collective_groups is None or not len(collective_groups):
         return html.Div()
 
@@ -4279,13 +4127,6 @@ def _collective_groups_panel():
     d = collective_groups.copy()
     d["kategori"] = d.apply(_kategori, axis=1)
     counts = d["kategori"].value_counts()
-    d = d.sort_values(
-        ["kategori", "collective_iso_score"],
-        key=lambda c: c.map({"Manufactured housing": 0, "Lainnya": 1,
-                             "Negara bagian besar": 2, "Yurisdiksi kecil": 3})
-        if c.name == "kategori" else c,
-        ascending=[True, False],
-    )
     tbl = pd.DataFrame({
         "Kategori": d["kategori"],
         "Kelompok": d["group_values"],
@@ -4294,8 +4135,6 @@ def _collective_groups_panel():
         "Skor": d["collective_iso_score"].map(lambda v: f"{v:.3f}"),
         "Anggota ditandai individual": d["member_individual_flag_rate"].map(
             lambda v: f"{v*100:.0f}%"),
-        "Pure collective": d["pure_collective_candidate"].map(
-            lambda v: "Ya" if bool(v) else "-"),
     })
 
     tiles = html.Div(
@@ -4328,29 +4167,12 @@ def _collective_groups_panel():
                         "kebalikannya: 28 dari 33 kelompok yang ditandai punya proporsi anggota "
                         "anomali di atas baseline portfolio 11,0%, dengan median 19,1%. Kelompok "
                         "itu menonjol karena memang berisi lebih banyak baris aneh, bukan karena "
-                        "ada pola kolektif tersembunyi. Label pure collective pun tidak membantu, "
-                        "karena ambang di bawah 25% terlalu longgar untuk baseline 11,0%.",
+                        "ada pola kolektif tersembunyi.",
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
                 style={"background": "#f1f4f8", "border": f"1px solid {BORDER}",
                        "borderRadius": "10px", "padding": "12px 14px", "marginBottom": "12px"},
-            ),
-            html.Div(
-                [
-                    html.B("Yang sengaja tidak diklaim sebagai temuan. ",
-                           style={"fontSize": "12px", "color": NAVY}),
-                    html.Span(
-                        "15 kelompok berasal dari yurisdiksi kecil seperti Hawaii, DC, dan Puerto "
-                        "Rico atau state yang tidak diketahui, sementara 14 lainnya dari negara "
-                        "bagian besar dengan skor yang jauh lebih rendah. Kelompok kecil memang "
-                        "mudah terlihat menyimpang secara statistik, jadi keduanya diperlakukan "
-                        "sebagai variasi geografis biasa, bukan penemuan.",
-                        style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
-                    ),
-                ],
-                style={"background": "#fff8e8", "border": "1px solid #f3d7a0",
-                       "borderRadius": "10px", "padding": "12px 14px", "marginBottom": "14px"},
             ),
             _table(tbl),
             html.Div(
@@ -4360,8 +4182,7 @@ def _collective_groups_panel():
                         "jangan bangun pemantauan risiko di atas sinyal tingkat kelompok ini. "
                         "Yang ditangkap sebagian besar efek ukuran kelompok dan geografi, bukan "
                         "perilaku yang perlu ditindaklanjuti. Sumber daya tinjauan lebih baik "
-                        "diarahkan ke 476 rekaman yang disepakati dua filosofi detektor, yang "
-                        "jumlahnya realistis dan buktinya jelas.",
+                        "diarahkan ke 476 rekaman yang disepakati dua filosofi detektor.",
                         style={"fontSize": "12px", "color": INK, "lineHeight": "1.6"},
                     ),
                 ],
@@ -4371,7 +4192,7 @@ def _collective_groups_panel():
             why(WHY_COLLECTIVE_GROUPS),
         ],
         sub="Isolation Forest pada profil kelompok, bukan pada baris. Kolom Kategori memisahkan "
-        "temuan yang didukung bukti lintas fase dari efek ukuran kelompok.",
+        "efek ukuran kelompok dari sisanya.",
     )
 
 
@@ -5000,7 +4821,6 @@ def _fase1_content():
 
     children.append(_phase1_distribution_panel())
     children.append(_feature_funnel_panel())
-    children.append(_vif_panel())
 
     children.append(
         panel(
