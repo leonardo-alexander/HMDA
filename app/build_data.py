@@ -634,6 +634,53 @@ def build_anomaly_reasons(clean, random_state=RANDOM_STATE):
     print(f"Anomaly reasons: {n_named:,} baris ditandai diberi alasan")
 
 
+def build_cluster_feature_validation(clean, appdeny=None):
+    """Validation numbers for the nine clustering features.
+
+    The four continuous ones carry their Phase 1 correlation and mutual-information scores.
+    The five binary flags are engineered in Phase 2 and never went through Phase 1 scoring, so
+    for those the honest validation is the approval-rate split they produce: a direct measure of
+    whether the flag separates anything at all.
+    """
+    audit_path = TABLE_DIR / "p1_feature_selection_audit.csv"
+    audit = pd.read_csv(audit_path) if audit_path.exists() else pd.DataFrame()
+    cont = ["income", "combined_loan_to_value_ratio",
+            "tract_minority_population_percent", "tract_to_msa_income_percentage"]
+    flags = ["_is_investment", "_is_refinance", "_is_manufactured",
+             "_is_subordinate", "_is_high_dti"]
+
+    rows = []
+    for f in cont:
+        r = audit[audit["feature"] == f] if len(audit) else pd.DataFrame()
+        if not len(r):
+            continue
+        x = r.iloc[0]
+        rows.append({"feature": f, "kind": "kontinu",
+                     "corr": round(float(x["corr"]), 4),
+                     "mi": round(float(x["mi"]), 5),
+                     "score": round(float(x["score"]), 3),
+                     "share_pct": np.nan, "approval_on": np.nan,
+                     "approval_off": np.nan, "approval_gap": np.nan})
+
+    if "_approved" in clean.columns:
+        appr = pd.to_numeric(clean["_approved"], errors="coerce")
+        for f in flags:
+            if f not in clean.columns:
+                continue
+            is_on = clean[f] == 1
+            on = appr[is_on].mean() * 100
+            off = appr[~is_on].mean() * 100
+            rows.append({"feature": f, "kind": "biner",
+                         "corr": np.nan, "mi": np.nan, "score": np.nan,
+                         "share_pct": round(float(is_on.mean() * 100), 2),
+                         "approval_on": round(float(on), 1),
+                         "approval_off": round(float(off), 1),
+                         "approval_gap": round(float(on - off), 1)})
+
+    pd.DataFrame(rows).to_csv(DATA_PROCESSED / "dash_cluster_feature_validation.csv", index=False)
+    print(f"Cluster feature validation: {len(rows)} features")
+
+
 def build_context_fields(appdeny):
     # Contextual (non-demographic) fields for the What-If "more context" section. These
     # deliberately exclude derived_race/derived_ethnicity/derived_sex/tract_minority_cat --
@@ -673,6 +720,7 @@ def main():
     build_detector_comparison(clean)
     build_anomaly_drivers(clean)
     build_anomaly_reasons(clean)
+    build_cluster_feature_validation(clean)
     build_state_aggregates(clean, appdeny, denials)
     build_term_aggregates(appdeny)
     build_context_fields(appdeny)

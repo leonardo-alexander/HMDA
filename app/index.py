@@ -453,6 +453,9 @@ detector_cmp = read("dash_detector_comparison.csv")  # per-detector counts
 detector_overlap = read("dash_detector_overlap.csv")  # pairwise Jaccard
 anomaly_by_cluster = read("dash_anomaly_by_cluster.csv")  # Phase 2 <-> Phase 4 link
 anomaly_drivers = read("dash_anomaly_drivers.csv")  # what drives a flag, per segment
+cluster_feat_validation = read(
+    "dash_cluster_feature_validation.csv"
+)  # corr/MI for continuous, approval split for flags
 triage = _normalize_triage(
     read("p4_anomaly_triage.csv", index_col=0)
 )  # top-15 anomalies, verdict + evidence
@@ -3431,32 +3434,47 @@ CLUSTER_SCOPE = {
 
 
 def _cluster_feats_details(method):
-    """Collapsible feature list shared by all four clustering methods."""
+    """Collapsible feature list shared by all four clustering methods, with validation numbers.
+
+    Continuous features carry their Phase 1 correlation and mutual-information scores. The five
+    binary flags are engineered in Phase 2 and never went through Phase 1 scoring, so they are
+    validated by the approval-rate split they produce instead: a direct check that the flag
+    separates something rather than just adding a dimension.
+    """
     name, scope = CLUSTER_SCOPE.get(method, ("Metode ini", "sampel"))
-    cont = [
-        "income",
-        "combined_loan_to_value_ratio",
-        "tract_minority_population_percent",
-        "tract_to_msa_income_percentage",
-    ]
-    flags = [
-        "_is_investment",
-        "_is_refinance",
-        "_is_manufactured",
-        "_is_subordinate",
-        "_is_high_dti",
-    ]
-    df = pd.DataFrame(
-        [
-            {
-                "Fitur": c,
-                "Tipe": "kontinu",
-                "Perlakuan": "winsorize 1/99% lalu StandardScaler",
-            }
-            for c in cont
-        ]
-        + [{"Fitur": f, "Tipe": "biner", "Perlakuan": "StandardScaler"} for f in flags]
-    )
+    val = cluster_feat_validation
+    reasons = {
+        "income": "Kapasitas finansial pemohon, pembeda paling dasar antar segmen.",
+        "combined_loan_to_value_ratio":
+            "Tingkat leverage. Korelasinya praktis nol tetapi MI tinggi, jadi hubungannya "
+            "non-linear dan hanya tertangkap entropy.",
+        "tract_minority_population_percent":
+            "Konteks lingkungan. Dipakai membentuk segmen, bukan menilai pemohon.",
+        "tract_to_msa_income_percentage":
+            "Korelasi tertinggi di antara fitur clustering, meski kandungan informasinya tipis.",
+        "_is_investment": "Memisahkan investor dari penghuni.",
+        "_is_refinance": "Memisahkan refinance dari pembelian.",
+        "_is_manufactured": "Tipe properti dengan jalur pembiayaan berbeda.",
+        "_is_subordinate": "Posisi lien menentukan prioritas klaim.",
+        "_is_high_dti": "Beban utang, pemisah terkuat di seluruh analisis.",
+    }
+    rows = []
+    if val is not None and len(val):
+        for _, r in val.iterrows():
+            f = r["feature"]
+            if r["kind"] == "kontinu":
+                bukti = (f"korelasi {r['corr']:+.4f} · MI {r['mi']:.5f} · skor {r['score']:.3f}")
+                perlakuan = "winsorize 1/99% lalu StandardScaler"
+            else:
+                bukti = (f"selisih persetujuan {r['approval_gap']:+.1f} poin "
+                         f"({r['approval_on']:.1f}% vs {r['approval_off']:.1f}%) · "
+                         f"{r['share_pct']:.1f}% populasi")
+                perlakuan = "StandardScaler"
+            rows.append({"Fitur": f, "Tipe": r["kind"],
+                         "Angka validasi": bukti,
+                         "Kenapa dipilih": reasons.get(f, ""),
+                         "Perlakuan": perlakuan})
+    df = pd.DataFrame(rows)
     return html.Details(
         [
             html.Summary(
@@ -3473,9 +3491,12 @@ def _cluster_feats_details(method):
             html.Div(
                 [
                     html.P(
-                        "Kesembilan fitur berikut dipakai keempat metode clustering, dengan "
-                        "perlakuan penskalaan yang sama. Yang berbeda cuma cakupan barisnya, dan "
-                        "itu ada di tabel perbandingan.",
+                        "Kesembilan fitur berikut dipakai keempat metode clustering dengan perlakuan "
+                        "penskalaan yang sama; yang berbeda cuma cakupan barisnya. Kolom angka "
+                        "validasi memakai ukuran yang sesuai jenis fiturnya: korelasi dan mutual "
+                        "information untuk fitur kontinu, dan selisih tingkat persetujuan untuk "
+                        "flag biner, karena flag dibentuk di Fase 2 sehingga tidak ikut diskor di "
+                        "Fase 1.",
                         style={
                             "fontSize": "12px",
                             "color": INK,

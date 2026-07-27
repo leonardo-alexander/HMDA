@@ -1,0 +1,10 @@
+feature,kind,corr,mi,score,share_pct,approval_on,approval_off,approval_gap
+income,kontinu,-0.0058,0.02866,0.177,,,,
+combined_loan_to_value_ratio,kontinu,-0.0076,0.03899,0.24,,,,
+tract_minority_population_percent,kontinu,-0.0779,0.01127,0.312,,,,
+tract_to_msa_income_percentage,kontinu,0.0941,0.00453,0.327,,,,
+_is_investment,biner,,,,7.37,83.0,76.4,6.6
+_is_refinance,biner,,,,32.93,74.5,78.0,-3.5
+_is_manufactured,biner,,,,4.54,43.1,78.4,-35.3
+_is_subordinate,biner,,,,16.78,64.0,80.2,-16.2
+_is_high_dti,biner,,,,9.91,36.7,83.4,-46.7

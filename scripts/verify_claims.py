@@ -208,6 +208,18 @@ if ad_drv is not None:
     _top = ad_drv.sort_values("deviation", ascending=False).iloc[0]
     check("Pendorong terkuat (kelipatan)", _top["ratio"], 12.28, 0.05)
 
+
+cfv = load("dash_cluster_feature_validation.csv")
+if cfv is not None:
+    check("Fitur clustering divalidasi", len(cfv), 9, 0)
+    _hd = cfv[cfv["feature"] == "_is_high_dti"].iloc[0]
+    check("Selisih persetujuan high-DTI", _hd["approval_gap"], -46.7, 0.15)
+    _mf = cfv[cfv["feature"] == "_is_manufactured"].iloc[0]
+    check("Selisih persetujuan manufactured", _mf["approval_gap"], -35.3, 0.15)
+    _cl = cfv[cfv["feature"] == "combined_loan_to_value_ratio"].iloc[0]
+    check("CLTV mutual information", _cl["mi"], 0.03899, 0.0005)
+    check("CLTV korelasi", _cl["corr"], -0.0076, 0.001)
+
 # ---------------------------------------------------------------- report
 fails = [r for r in results if not r[0]]
 for ok, label, actual, expected in results:
