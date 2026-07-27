@@ -444,6 +444,8 @@ gender_gap = read("dash_gender_gap.csv")  # approval by applicant sex within DTI
 gender_context = read(
     "dash_gender_context.csv"
 )  # raw derived_sex categories (Joint caveat)
+phase1_dist = read("dash_phase1_distributions.csv")  # binned continuous distributions
+phase1_dist_stats = read("dash_phase1_distribution_stats.csv")  # mean/median/skew per feature
 triage = _normalize_triage(
     read("p4_anomaly_triage.csv", index_col=0)
 )  # top-15 anomalies, verdict + evidence
@@ -2852,7 +2854,7 @@ app.layout = html.Div(
                     },
                 ),
                 html.Div(
-                    "Kelompok 4 · Home Mortgage Disclosure Act · Sampel 100.000 rekaman (data terbuka CFPB)",
+                    "Kelompok 3 · Home Mortgage Disclosure Act · Sampel 100.000 rekaman (data terbuka CFPB)",
                     style={
                         "fontSize": "13px",
                         "color": "rgba(255,255,255,0.78)",
@@ -3831,6 +3833,347 @@ WHY_SCALER_MAP = [
 ]
 
 
+DIST_LABELS = {
+    "income": "Income ($ribu)",
+    "loan_amount": "Loan amount ($)",
+    "property_value": "Property value ($)",
+    "combined_loan_to_value_ratio": "CLTV (%)",
+    "loan_term": "Loan term (bulan)",
+}
+
+WHY_DISTRIBUTIONS = [
+    ("Kenapa distribusi ini penting dilihat?",
+     "Karena hampir semua keputusan prapemrosesan bersandar padanya. Alasan memilih median "
+     "alih-alih mean, dan alasan melakukan winsorize sebelum clustering, cuma masuk akal kalau "
+     "datanya memang menjulur jauh ke kanan. Grafik ini membuat klaim itu bisa dilihat, bukan "
+     "sekadar dipercaya."),
+    ("Seberapa parah kemencengannya?",
+     "Income punya skewness 296 dengan mean 2,76 kali median: rata-ratanya $262rb sementara "
+     "median cuma $95rb. Loan amount dan property value polanya sama, mean masing-masing 1,43 "
+     "dan 1,40 kali median. Itulah sebabnya mean akan mengisi nilai kosong dengan angka yang "
+     "jauh di atas pemohon kebanyakan."),
+    ("Kenapa sumbunya dipotong di persentil 99,5?",
+     "Karena ada satu property value sampai $800 juta dan income sampai $10 juta. Kalau "
+     "seluruh rentang dipaksa masuk, semua observasi nyata akan menumpuk jadi satu batang di "
+     "paling kiri dan grafiknya tidak terbaca. Nilai ekstremnya tidak dibuang, hanya tidak "
+     "digambar, dan justru itu yang jadi target Fase 4."),
+    ("Kenapa loan_term justru menceng ke kiri?",
+     "Karena tenor didominasi 360 bulan alias 30 tahun, dengan median tepat 360. Skewness-nya "
+     "negatif 1,82, jadi ekornya ada di sisi tenor pendek. Ini juga alasan tenor tidak ikut "
+     "dipakai sebagai fitur clustering."),
+]
+
+
+@lru_cache(maxsize=8)
+def fig_phase1_distribution(feature):
+    """Histogram of one Phase 1 continuous feature, with mean and median marked."""
+    if phase1_dist is None or not len(phase1_dist):
+        return blank("Data distribusi belum tersedia. Jalankan build_data.py dulu.")
+    d = phase1_dist[phase1_dist["feature"] == feature]
+    if not len(d):
+        return blank("Fitur tidak tersedia.")
+    label = DIST_LABELS.get(feature, feature)
+    f = go.Figure(go.Bar(
+        x=(d["bin_left"] + d["bin_right"]) / 2,
+        y=d["count"],
+        width=(d["bin_right"] - d["bin_left"]) * 0.95,
+        marker_color=STEEL,
+        hovertemplate=f"{label}: %{{x:,.0f}}<br>Aplikasi: %{{y:,}}<extra></extra>",
+    ))
+    if phase1_dist_stats is not None and len(phase1_dist_stats):
+        st = phase1_dist_stats[phase1_dist_stats["feature"] == feature]
+        if len(st):
+            st = st.iloc[0]
+            f.add_vline(x=float(st["median"]), line_dash="solid", line_color=GREEN,
+                        annotation_text=f"median {st['median']:,.0f}",
+                        annotation_position="top right")
+            f.add_vline(x=float(st["mean"]), line_dash="dash", line_color=RED,
+                        annotation_text=f"mean {st['mean']:,.0f}",
+                        annotation_position="top left")
+    f.update_layout(
+        template=TEMPLATE, height=380, bargap=0.02,
+        title=f"Distribusi {label} - sumbu dipotong di persentil 99,5",
+        xaxis_title=label, yaxis_title="Jumlah aplikasi",
+        margin=dict(l=10, r=10, t=44, b=10),
+    )
+    return f
+
+
+def _phase1_distribution_panel():
+    """Interactive distribution view: the visual evidence behind the cleaning choices."""
+    if phase1_dist is None or not len(phase1_dist):
+        return html.Div()
+    opts = [{"label": DIST_LABELS.get(f, f), "value": f}
+            for f in phase1_dist["feature"].unique()]
+    stats_tbl = html.Div()
+    if phase1_dist_stats is not None and len(phase1_dist_stats):
+        st = phase1_dist_stats.copy()
+        stats_tbl = _table(pd.DataFrame({
+            "Fitur": st["feature"].map(lambda f: DIST_LABELS.get(f, f)),
+            "Median": st["median"].map(lambda v: f"{v:,.0f}"),
+            "Mean": st["mean"].map(lambda v: f"{v:,.0f}"),
+            "Mean / median": st["mean_over_median"].map(lambda v: f"{v:.2f}x"),
+            "Skewness": st["skew"].map(lambda v: f"{v:,.1f}"),
+            "Maksimum": st["max"].map(lambda v: f"{v:,.0f}"),
+        }))
+    return panel(
+        "Distribusi fitur kontinu: bukti di balik pilihan pembersihan",
+        [
+            html.P(
+                "Pilih fitur untuk melihat sebarannya. Garis hijau median, garis merah "
+                "putus-putus mean. Makin jauh keduanya, makin kuat alasan memakai median.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 10px"},
+            ),
+            dcc.Dropdown(
+                id="p1-dist-feature",
+                options=opts,
+                value="income",
+                clearable=False,
+                style={"fontSize": "12px", "maxWidth": "320px", "marginBottom": "10px"},
+            ),
+            graph("p1-dist-chart"),
+            html.H4("Ringkasan sebaran",
+                    style={"fontSize": "13px", "color": NAVY, "margin": "16px 0 8px"}),
+            stats_tbl,
+            why(WHY_DISTRIBUTIONS),
+        ],
+        sub="Dihitung pada 99.995 baris bersih. Sumbu dipotong di persentil 99,5 agar terbaca; "
+        "nilai ekstremnya tidak dibuang dan justru jadi target Fase 4.",
+    )
+
+
+# Notebook step map. Mirrors the section order of HMDA.ipynb so the dashboard reads as a
+# complete report: every analytical step is listed, including the ones that produce a table or
+# an assertion rather than a chart. "hasil" is the outcome that step actually produced.
+PIPELINE_STEPS = {
+    "fase1": [
+        ("1", "Memuat sampel", "100.000 baris dibaca sebagai string agar tipe data tidak salah disimpulkan.",
+         "100.000 x 99 kolom"),
+        ("2", "Segmentasi jenis fitur", "Setiap kolom dipetakan ke satu dari lima peran, divalidasi harus menutup semuanya.",
+         "99 kolom terpartisi"),
+        ("Diagnostik", "Pemindaian sebelum cleaning", "Sentinel dipindai ke seluruh kolom, bukan hanya yang terdokumentasi.",
+         "Kandidat sentinel teridentifikasi"),
+        ("3", "Penanganan sentinel", "Nilai 1111, 8888, 9999 dinilai per kolom, bukan diganti global.",
+         "Exempt dipertahankan sebagai makna"),
+        ("4", "Tumpang tindih fitur derived", "Kolom derived dan inherited yang tumpang tindih diselesaikan.",
+         "Duplikasi informasi dihapus"),
+        ("5", "Duplikat", "Baris kembar persis dihapus agar pola tidak terhitung dua kali.",
+         "5 duplikat dihapus"),
+        ("6", "EDA setelah cleaning", "Distribusi dan frekuensi diperiksa ulang pada data bersih.",
+         "Lihat panel distribusi di bawah"),
+        ("7", "Penanganan missing value", "Kolom >60% kosong dibuang, kontinu diisi median, kategorikal diisi Unknown.",
+         "6 kolom dibuang, 0 sel kosong tersisa"),
+        ("8", "Transformasi dan binning", "Target Originated vs Denied dibentuk, fitur kontinu dibinning.",
+         "67.827 aplikasi berkeputusan"),
+        ("9", "Seleksi fitur", "Korelasi dan mutual information dihitung, lalu digabung jadi skor.",
+         "31 fitur diskor"),
+        ("9c", "Audit multikolinearitas", "VIF dihitung, ditambah uji khusus apakah DTI bisa direkonstruksi.",
+         "0 fitur di atas ambang, R2 DTI 0,100"),
+        ("10", "Ekspor artefak", "Data bersih, subset berkeputusan, dan tabel penolakan diekspor.",
+         "3 file interim"),
+    ],
+    "fase2": [
+        ("Jembatan", "Peran fitur dan matriks", "Fitur dibagi untuk clustering dan anomali, lalu diskalakan sesuai tujuannya.",
+         "9 fitur clustering, 8 fitur anomali"),
+        ("2.1", "Memilih K", "Elbow dan silhouette dihitung untuk K = 2 sampai 10.",
+         "K = 7 dipilih dari silhouette"),
+        ("2.2", "K-Means final", "Dijalankan pada seluruh data dengan indeks validitas.",
+         "silhouette 0,303"),
+        ("2.3", "DBSCAN", "eps dipilih dari knee k-distance, dijalankan pada sampel 20.000.",
+         "17 cluster + 895 noise"),
+        ("2.4", "Hierarchical Ward", "Dendrogram dipotong pada K yang sama untuk uji replikasi.",
+         "ARI 0,906 terhadap K-Means"),
+        ("2.5", "Visualisasi PCA", "Cluster diproyeksikan ke dua komponen utama untuk digambar.",
+         "PC1+PC2 = 31,9% variansi"),
+        ("2.6", "Profil dan penamaan", "Tiap cluster diringkas lalu diberi nama bisnis.",
+         "7 segmen bernama"),
+        ("2.7", "Silhouette per cluster", "Kohesi diperiksa per segmen, bukan hanya rata-rata.",
+         "Manufactured tertinggi 0,495"),
+        ("2.8", "CLARANS", "k-medoids dengan randomized search sebagai pembanding.",
+         "ARI 0,710 terhadap K-Means"),
+        ("2.9", "Medoid CLARANS", "Aplikasi nyata yang mewakili pusat tiap cluster ditampilkan.",
+         "7 medoid nyata"),
+        ("2.10", "Audit stabilitas", "Diuji apakah ada cluster palsu memakai ukuran, kohesi, dan replikasi.",
+         "0 cluster mencurigakan"),
+    ],
+    "fase3": [
+        ("3.1", "Matriks transaksi", "19 fitur kategorikal diubah jadi one-hot, item terlalu jarang atau umum dibuang.",
+         "82 item dari 67.827 transaksi"),
+        ("3.2", "Frequent itemset", "Apriori dijalankan dengan minimum support 2% dan panjang maksimal 3.",
+         "Itemset frekuen terbentuk"),
+        ("3.3", "Ekstraksi decision rule", "Hanya rule dengan konsekuen keputusan yang diambil, lift > 1,2 dan confidence >= 55%.",
+         "28 aturan kandidat"),
+        ("3.4", "Uji signifikansi", "Chi-square dan Wilson CI 95% diterapkan pada rule teratas.",
+         "Seluruhnya signifikan"),
+        ("3.5", "Improvement filter", "Rule dipertahankan hanya bila unggul 2 poin dari sub-rule terbaiknya.",
+         "28 menjadi 11 aturan"),
+        ("3.6", "Validasi rule set", "Jumlah dan kelengkapan metrik diperiksa lewat assert.",
+         "11 aturan, semua metrik lengkap"),
+        ("3.7", "Interpretasi bisnis", "Tiap rule final diterjemahkan jadi rekomendasi yang bisa ditindaklanjuti.",
+         "11 rekomendasi"),
+        ("3.8", "Jaringan rule", "Antecedent dan konsekuen digambar sebagai graf dari rule final.",
+         "Lihat panel jaringan aturan"),
+        ("3.9", "Geografi x DTI", "Crosstab persetujuan menurut tract minoritas di dalam kelompok DTI.",
+         "Selisih 12,1 poin pada DTI rendah"),
+        ("3.10", "Pola alasan penolakan", "Alasan yang dicatat lender diringkas sebagai pembanding independen.",
+         "DTI 28,4% sebagai alasan terbanyak"),
+    ],
+    "fase4": [
+        ("4.1", "Flag statistik", "IQR dan Z-score dihitung per fitur lalu diagregasi jadi jumlah pelanggaran.",
+         "Dua detektor global"),
+        ("4.2", "Isolation Forest", "Dijalankan pada matriks anomali berskala robust, contamination 1%.",
+         "Skor anomali per baris"),
+        ("4.3", "Local Outlier Factor", "Dijalankan pada sampel 20.000 dengan 20 tetangga.",
+         "Detektor kontekstual"),
+        ("4.4", "Kesepakatan ensemble", "Lima detektor memberi suara, DBSCAN-noise ikut sebagai referensi silang.",
+         "739 baris dengan 3+ suara"),
+        ("4.5", "Taksonomi outlier", "Hasil dipisah menjadi global, kontekstual, dan keduanya.",
+         "9.959 / 589 / 476"),
+        ("4.6", "Pencarian anomali kolektif", "Isolation Forest dijalankan pada profil kelompok, bukan baris.",
+         "33 kelompok ditandai, hasil negatif"),
+        ("4.7", "Kolektif dari struktur cluster", "Segmen diuji sebagai kandidat kolektif memakai skor bukti.",
+         "Tidak ada yang lolos definisi"),
+        ("4.8", "Triage anomali utama", "15 rekaman paling ekstrem diperiksa dengan uji konsistensi internal.",
+         "15 verdict"),
+        ("4.9", "Penyelesaian manual", "Kasus yang butuh penilaian manusia diselesaikan dengan bukti tertulis.",
+         "Semua RARE BUT VALID"),
+    ],
+    "fase5": [
+        ("5.1", "Ekspor agregat", "Seluruh tabel ringkas yang dibaca dashboard ditulis ke data/processed.",
+         "30+ file dash_*.csv"),
+        ("5.2", "Dashboard interaktif", "Hasil kelima fase disusun jadi laporan yang bisa ditelusuri.",
+         "6 tab"),
+        ("5.3", "Analisis geografi", "Persetujuan dipetakan per negara bagian dengan rincian per DTI dan segmen.",
+         "53 negara bagian"),
+        ("5.4", "What-If historis", "Pencarian langsung terhadap aplikasi historis yang cocok, bukan model prediktif.",
+         "16 atribut profil"),
+        ("5.5", "Analisis keadilan", "Selisih persetujuan diperiksa setelah beban utang disamakan.",
+         "Selisih tract 12,1 poin"),
+        ("5.6", "Uji beban", "Dashboard diuji dengan 6.174 request untuk memastikan responsif.",
+         "0 error"),
+        ("5.7", "Audit rubric", "Setiap kriteria rubric diperiksa ulang lewat kode, bukan diklaim.",
+         "Seluruh kriteria terpenuhi"),
+    ],
+}
+
+WHY_STEPS = [
+    ("Kenapa langkah tanpa grafik tetap ditampilkan?",
+     "Karena sebagian keputusan paling penting justru tidak menghasilkan gambar. Penanganan "
+     "sentinel, penyelesaian tumpang tindih kolom, dan validasi rule set semuanya berupa tabel "
+     "atau assert. Kalau cuma langkah bergambar yang dilaporkan, alur kerjanya akan terlihat "
+     "bolong padahal tidak."),
+    ("Kenapa urutannya persis mengikuti notebook?",
+     "Supaya hasil di dashboard bisa ditelusuri balik ke sel yang menghasilkannya. Notebook "
+     "adalah sumber kebenaran, dan dashboard hanya menyajikan ulang keluarannya dalam bentuk "
+     "yang lebih mudah dibaca."),
+    ("Kenapa kolom hasil dicantumkan?",
+     "Supaya tiap langkah punya keluaran yang bisa diperiksa, bukan sekadar deskripsi kegiatan. "
+     "Angka pada kolom itu sama dengan yang muncul di panel-panel di bawah dan diverifikasi "
+     "otomatis oleh scripts/verify_claims.py."),
+]
+
+
+def _pipeline_steps_panel(phase):
+    """Ordered list of the notebook steps for one phase, including the non-visual ones."""
+    steps = PIPELINE_STEPS.get(phase)
+    if not steps:
+        return html.Div()
+    df = pd.DataFrame(
+        [{"No": no, "Langkah": name, "Yang dilakukan": what, "Hasil": res}
+         for no, name, what, res in steps]
+    )
+    return panel(
+        "Langkah pada fase ini",
+        [
+            html.P(
+                "Urutannya mengikuti notebook, termasuk langkah yang tidak menghasilkan grafik "
+                "agar alur kerjanya utuh.",
+                style={"fontSize": "12px", "color": INK, "margin": "0 0 10px"},
+            ),
+            _table(df),
+            why(WHY_STEPS),
+        ],
+        sub=f"{len(steps)} langkah, sesuai urutan sel di HMDA.ipynb.",
+    )
+
+
+WHY_ANOMALY_FEATS = [
+    ("Kenapa fiturnya beda dari clustering?",
+     "Karena tujuannya berlawanan. Clustering sengaja membuang loan_amount dan property_value "
+     "supaya dimensi ukuran tidak terhitung berulang lewat CLTV. Deteksi anomali justru "
+     "membutuhkan magnitudo mentah itu, karena loan $70 juta memang harus terlihat sebagai "
+     "nilai ekstrem. Jadi keduanya dipakai penuh di sini."),
+    ("Kenapa tidak ada fitur biner seperti _is_manufactured?",
+     "Karena flag biner cuma punya dua nilai, sehingga tidak punya ekor distribusi yang bisa "
+     "disebut ekstrem. Menambahkannya tidak membantu mendeteksi outlier dan malah menggeser "
+     "jarak antar baris. Karakteristik kategorikal seperti itu ditangani di clustering dan "
+     "association rules, bukan di sini."),
+    ("Kenapa nilai aslinya tidak di-winsorize?",
+     "Karena winsorize memotong 1% ekor teratas dan terbawah, padahal justru di situ letak "
+     "anomali yang dicari. Kalau ekornya dipangkas duluan, detektor kehilangan targetnya. "
+     "Winsorize hanya dipakai pada salinan untuk clustering."),
+    ("Kenapa penskalaannya RobustScaler?",
+     "Karena penskalaan tidak boleh terseret oleh outlier yang sedang dicari. Mean dan standar "
+     "deviasi tertarik nilai ekstrem, sehingga outlier menggelembungkan std dan z-score-nya "
+     "sendiri malah mengecil. Median dan IQR tidak punya masalah itu."),
+    ("Kenapa IQR dan Z-score tidak memakai matriks berskala?",
+     "Karena keduanya sudah scale-invariant. IQR bekerja pada kuartil per fitur dan Z-score "
+     "membagi dengan standar deviasi fitur itu sendiri, jadi menskalakan lebih dulu tidak "
+     "mengubah baris mana yang ditandai."),
+]
+
+
+def _anomaly_features_details():
+    """Collapsible feature list for the anomaly matrix, mirroring the Fase 2 and 3 blocks."""
+    feats = [
+        ("income", "magnitudo finansial pemohon"),
+        ("loan_amount", "magnitudo pinjaman"),
+        ("property_value", "magnitudo agunan"),
+        ("combined_loan_to_value_ratio", "rasio leverage"),
+        ("loan_term", "tenor pinjaman"),
+        ("tract_minority_population_percent", "konteks lingkungan"),
+        ("tract_to_msa_income_percentage", "konteks lingkungan"),
+        ("ffiec_msa_md_median_family_income", "konteks wilayah"),
+    ]
+    df = pd.DataFrame(
+        [{"Fitur": f, "Peran": r,
+          "Perlakuan": "nilai asli tanpa winsorize, lalu RobustScaler"} for f, r in feats]
+    )
+    return html.Details(
+        [
+            html.Summary(
+                "Fitur yang dipakai deteksi anomali dan perlakuannya (klik)",
+                style={"cursor": "pointer", "fontWeight": "700", "fontSize": "12.5px",
+                       "color": STEEL, "padding": "4px 0", "userSelect": "none"},
+            ),
+            html.Div(
+                [
+                    html.P(
+                        "8 fitur bermagnitudo dipakai untuk membentuk matriks anomali. Isolation "
+                        "Forest dan LOF membaca matriks ini; IQR dan Z-score bekerja langsung "
+                        "pada nilai aslinya tanpa matriks.",
+                        style={"fontSize": "12px", "color": INK, "margin": "0 0 10px",
+                               "lineHeight": "1.6"},
+                    ),
+                    _table(df),
+                    html.P(
+                        "Perbedaan penting dari clustering: di sana loan_amount dan property_value "
+                        "sengaja dikeluarkan karena sudah terwakili CLTV, sedangkan di sini "
+                        "keduanya justru wajib ada karena magnitudo mentah adalah targetnya. "
+                        "Fitur pasca-keputusan seperti interest rate dan biaya tetap dikecualikan, "
+                        "sama seperti di dua fase lainnya.",
+                        style={"fontSize": "11.5px", "color": MUTE, "margin": "10px 0 0",
+                               "lineHeight": "1.6"},
+                    ),
+                ],
+                style={"marginTop": "12px"},
+            ),
+        ],
+        style={"background": "#f8fafd", "border": f"1px solid {BORDER}",
+               "borderRadius": "10px", "padding": "12px 16px", "marginBottom": "16px"},
+    )
+
+
 def _scaler_map_panel():
     """Which matrix and scaler each detector actually consumes."""
     df = pd.DataFrame(
@@ -4441,6 +4784,7 @@ def _fase1_content():
         },
     )
     children = [
+        _pipeline_steps_panel("fase1"),
         panel(
             "Ringkasan pembersihan data",
             [
@@ -4645,6 +4989,7 @@ def _fase1_content():
             )
         )
 
+    children.append(_phase1_distribution_panel())
     children.append(_feature_funnel_panel())
     children.append(_vif_panel())
 
@@ -4721,6 +5066,7 @@ def render(tab):
         tab = "anomalies"
     elif tab == "fase5":
         sections = [
+            ("f5-steps", "Langkah", _pipeline_steps_panel("fase5")),
             ("f5-geo", "Geografi", render("geography")),
             ("f5-whatif", "What-If", render("whatif")),
             ("f5-fair", "Fairness", render("fairness")),
@@ -4879,6 +5225,7 @@ def render(tab):
         # four methods run on the identical matrix; repeating it per method was noise.
         return html.Div(
             [
+                _pipeline_steps_panel("fase2"),
                 panel(
                     "Metode clustering dan dasar pemilihannya",
                     [
@@ -4940,6 +5287,7 @@ def render(tab):
         n_biz = len(rules) if rules is not None else 0
         return html.Div(
             [
+                _pipeline_steps_panel("fase3"),
                 panel(
                     "Mengapa hanya 11 yang relevan bisnis?",
                     [
@@ -5050,6 +5398,7 @@ def render(tab):
         n_total = max(n_global + n_local + n_both + n_normal, 1)
         return html.Div(
             [
+                _pipeline_steps_panel("fase4"),
                 panel(
                     "Cara membaca ini",
                     [
@@ -5065,6 +5414,8 @@ def render(tab):
                             },
                         ),
                         why(WHY_DETECTORS),
+                        _anomaly_features_details(),
+                        why(WHY_ANOMALY_FEATS, "Kenapa fitur-fitur itu yang dipakai? (klik)"),
                     ],
                 ),
                 panel(
@@ -5767,3 +6118,8 @@ if __name__ == "__main__":
         port=int(os.getenv("HMDA_PORT", "8050")),
         debug=os.getenv("HMDA_DEBUG", "0") == "1",
     )
+
+
+@app.callback(Output("p1-dist-chart", "figure"), Input("p1-dist-feature", "value"))
+def _cb_p1_dist(feature):
+    return fig_phase1_distribution(feature or "income")

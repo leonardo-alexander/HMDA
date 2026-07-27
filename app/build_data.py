@@ -421,6 +421,48 @@ def build_term_aggregates(appdeny):
     print(f"Term aggregates: {len(g)} term bands, {len(purpose_long)} purpose-composition rows")
 
 
+def build_phase1_distributions(clean):
+    """Binned distributions for the Phase 1 continuous features.
+
+    The dashboard's Fase 1 explains why median imputation and winsorizing were chosen, but
+    that argument rests on the data being heavily right-skewed. Exporting the histogram makes
+    the reader able to see the skew instead of taking the claim on trust. Bins are computed
+    once here so the dashboard never has to load the 100k-row table.
+    """
+    feats = ["income", "loan_amount", "property_value",
+             "combined_loan_to_value_ratio", "loan_term"]
+    rows, stats = [], []
+    for f in feats:
+        if f not in clean.columns:
+            continue
+        s_num = pd.to_numeric(clean[f], errors="coerce").dropna()
+        if not len(s_num):
+            continue
+        # Clip the display range at the 99.5th percentile: a single $130M property value
+        # would otherwise put every real observation into one bar.
+        hi = float(s_num.quantile(0.995))
+        lo = float(s_num.min())
+        clipped = s_num.clip(lo, hi)
+        counts, edges = np.histogram(clipped, bins=40)
+        for c, left, right in zip(counts, edges[:-1], edges[1:]):
+            rows.append({"feature": f, "bin_left": round(float(left), 2),
+                         "bin_right": round(float(right), 2), "count": int(c)})
+        stats.append({
+            "feature": f,
+            "n": int(len(s_num)),
+            "mean": round(float(s_num.mean()), 2),
+            "median": round(float(s_num.median()), 2),
+            "p99": round(float(s_num.quantile(0.99)), 2),
+            "max": round(float(s_num.max()), 2),
+            "skew": round(float(s_num.skew()), 2),
+            "mean_over_median": round(float(s_num.mean() / s_num.median()), 2)
+            if s_num.median() else None,
+        })
+    pd.DataFrame(rows).to_csv(DATA_PROCESSED / "dash_phase1_distributions.csv", index=False)
+    pd.DataFrame(stats).to_csv(DATA_PROCESSED / "dash_phase1_distribution_stats.csv", index=False)
+    print(f"Phase 1 distributions: {len(stats)} features x 40 bins")
+
+
 def build_context_fields(appdeny):
     # Contextual (non-demographic) fields for the What-If "more context" section. These
     # deliberately exclude derived_race/derived_ethnicity/derived_sex/tract_minority_cat --
@@ -456,6 +498,7 @@ def main():
     build_outlier_taxonomy(clean)
     build_geography_gap(piv_rate, piv_n)
     build_gender_gap(appdeny)
+    build_phase1_distributions(clean)
     build_state_aggregates(clean, appdeny, denials)
     build_term_aggregates(appdeny)
     build_context_fields(appdeny)

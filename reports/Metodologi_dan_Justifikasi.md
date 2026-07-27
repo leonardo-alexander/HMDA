@@ -1,5 +1,5 @@
 # Metodologi dan Justifikasi Keputusan Analitis
-### Pipeline Penemuan Pengetahuan HMDA 2022 — Kelompok 4
+### Pipeline Penemuan Pengetahuan HMDA 2022 — Kelompok 3
 
 Dokumen ini menjawab satu pertanyaan untuk setiap keputusan dalam pipeline: **mengapa A dan bukan B?**
 Setiap angka di sini diambil langsung dari hasil eksekusi pipeline, bukan perkiraan.

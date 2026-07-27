@@ -1,5 +1,5 @@
 # Key Insights & Recommendations
-### HMDA 2022 Knowledge Discovery — Kelompok 4
+### HMDA 2022 Knowledge Discovery — Kelompok 3
 
 Seluruh angka di dokumen ini berasal dari keluaran notebook dan file CSV hasil ekspor.
 Temuan dinyatakan sebagai **asosiasi historis**, bukan hubungan sebab-akibat: data publik HMDA
