@@ -438,10 +438,12 @@ def build_phase1_distributions(clean):
         s_num = pd.to_numeric(clean[f], errors="coerce").dropna()
         if not len(s_num):
             continue
-        # Clip the display range at the 99.5th percentile: a single $130M property value
-        # would otherwise put every real observation into one bar.
+        # Clip BOTH tails for display. The upper tail matters most (a single $800M property
+        # value would put every real observation into one bar), but income also has valid
+        # negative values from business losses, which stretched the axis to -2000 and squeezed
+        # the actual distribution into a sliver.
         hi = float(s_num.quantile(0.995))
-        lo = float(s_num.min())
+        lo = float(s_num.quantile(0.005))
         clipped = s_num.clip(lo, hi)
         counts, edges = np.histogram(clipped, bins=40)
         for c, left, right in zip(counts, edges[:-1], edges[1:]):

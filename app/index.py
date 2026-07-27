@@ -3878,22 +3878,31 @@ def fig_phase1_distribution(feature):
         y=d["count"],
         width=(d["bin_right"] - d["bin_left"]) * 0.95,
         marker_color=STEEL,
+        name="Distribusi",
+        showlegend=False,
         hovertemplate=f"{label}: %{{x:,.0f}}<br>Aplikasi: %{{y:,}}<extra></extra>",
     ))
     if phase1_dist_stats is not None and len(phase1_dist_stats):
         st = phase1_dist_stats[phase1_dist_stats["feature"] == feature]
         if len(st):
             st = st.iloc[0]
-            f.add_vline(x=float(st["median"]), line_dash="solid", line_color=GREEN,
-                        annotation_text=f"median {st['median']:,.0f}",
-                        annotation_position="top right")
-            f.add_vline(x=float(st["mean"]), line_dash="dash", line_color=RED,
-                        annotation_text=f"mean {st['mean']:,.0f}",
-                        annotation_position="top left")
+            ymax = float(d["count"].max())
+            # Drawn as real traces rather than annotated vlines: the two annotation labels
+            # sat at the same height and overlapped into unreadable text.
+            for value, color, dash, nm in (
+                (float(st["median"]), GREEN, "solid", f"Median {st['median']:,.0f}"),
+                (float(st["mean"]), RED, "dash", f"Mean {st['mean']:,.0f}"),
+            ):
+                f.add_trace(go.Scatter(
+                    x=[value, value], y=[0, ymax * 1.02], mode="lines",
+                    line=dict(color=color, width=2, dash=dash),
+                    name=nm, hovertemplate=f"{nm}<extra></extra>",
+                ))
     f.update_layout(
         template=TEMPLATE, height=380, bargap=0.02,
-        title=f"Distribusi {label} - sumbu dipotong di persentil 99,5",
+        title=f"Distribusi {label} - sumbu dipotong di persentil 0,5 dan 99,5",
         xaxis_title=label, yaxis_title="Jumlah aplikasi",
+        legend={"orientation": "h", "y": -0.18, "title": ""},
         margin=dict(l=10, r=10, t=44, b=10),
     )
     return f
@@ -3937,8 +3946,8 @@ def _phase1_distribution_panel():
             stats_tbl,
             why(WHY_DISTRIBUTIONS),
         ],
-        sub="Dihitung pada 99.995 baris bersih. Sumbu dipotong di persentil 99,5 agar terbaca; "
-        "nilai ekstremnya tidak dibuang dan justru jadi target Fase 4.",
+        sub="Dihitung pada 99.995 baris bersih. Sumbu dipotong di persentil 0,5 dan 99,5 agar "
+        "terbaca; nilai ekstremnya tidak dibuang dan justru jadi target Fase 4.",
     )
 
 
