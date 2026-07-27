@@ -3441,28 +3441,42 @@ def _cluster_feats_details(method):
     """Collapsible feature list shared by all four clustering methods."""
     name, scope = CLUSTER_SCOPE.get(method, ("Metode ini", "sampel"))
     cont = [
-        "income",
-        "combined_loan_to_value_ratio",
-        "tract_minority_population_percent",
-        "tract_to_msa_income_percentage",
+        ("income", "Kapasitas finansial pemohon, pembeda paling dasar antar segmen."),
+        ("combined_loan_to_value_ratio",
+         "Tingkat leverage. Memisahkan pembeli baru yang uang mukanya tipis dari pemilik "
+         "rumah yang sudah punya equity besar."),
+        ("tract_minority_population_percent",
+         "Konteks lingkungan. Dipakai untuk membentuk segmen, bukan untuk menilai pemohon; "
+         "analisis keadilannya ada di Fase 5."),
+        ("tract_to_msa_income_percentage",
+         "Posisi ekonomi wilayah relatif terhadap kota sekitarnya, melengkapi income individual."),
     ]
     flags = [
-        "_is_investment",
-        "_is_refinance",
-        "_is_manufactured",
-        "_is_subordinate",
-        "_is_high_dti",
+        ("_is_investment",
+         "Memisahkan investor dari penghuni, karena motif dan profil risikonya berbeda."),
+        ("_is_refinance",
+         "Memisahkan refinance dari pembelian. Refinancer sudah terbukti membayar mortgage."),
+        ("_is_manufactured",
+         "Tipe properti dengan jalur pembiayaan berbeda, dan terbukti membentuk segmen paling "
+         "kohesif dengan silhouette 0,495."),
+        ("_is_subordinate",
+         "Posisi lien. Lien kedua punya prioritas klaim lebih rendah sehingga risikonya lain."),
+        ("_is_high_dti",
+         "Beban utang sebagai penanda segmen. DTI adalah pemisah terkuat di Fase 3, jadi wajar "
+         "ikut membentuk segmen."),
     ]
     df = pd.DataFrame(
         [
             {
                 "Fitur": c,
                 "Tipe": "kontinu",
+                "Kenapa dipilih": r,
                 "Perlakuan": "winsorize 1/99% lalu StandardScaler",
             }
-            for c in cont
+            for c, r in cont
         ]
-        + [{"Fitur": f, "Tipe": "biner", "Perlakuan": "StandardScaler"} for f in flags]
+        + [{"Fitur": f, "Tipe": "biner", "Kenapa dipilih": r,
+            "Perlakuan": "StandardScaler"} for f, r in flags]
     )
     return html.Details(
         [
@@ -3561,56 +3575,44 @@ WHY_RULE_FEATS = [
 
 
 def _rule_features_details():
-    """Feature list behind the transaction matrix used for Apriori."""
+    """Feature list behind the transaction matrix used for Apriori, with per-feature reasons."""
     groups = [
-        (
-            "Profil pemohon",
-            [
-                "derived_race",
-                "derived_ethnicity",
-                "derived_sex",
-                "applicant_age",
-                "income_band",
-            ],
-        ),
-        (
-            "Karakteristik loan",
-            [
-                "loan_type",
-                "loan_purpose",
-                "lien_status",
-                "preapproval",
-                "conforming_loan_limit",
-                "loan_amount_band",
-            ],
-        ),
-        (
-            "Properti & agunan",
-            [
-                "occupancy_type",
-                "construction_method",
-                "total_units",
-                "property_value_band",
-                "cltv_band",
-            ],
-        ),
-        ("Beban utang", ["debt_to_income_ratio"]),
-        ("Konteks lingkungan", ["tract_income_cat", "tract_minority_cat"]),
+        ("Profil pemohon", [
+            ("derived_race", "Diuji apakah menambah daya pisah di atas DTI. Ternyata tidak, dan justru itu temuannya."),
+            ("derived_ethnicity", "Sama seperti ras: dimasukkan untuk diuji, bukan untuk dipakai menilai."),
+            ("derived_sex", "Diuji bersama atribut demografis lain; tidak lolos improvement filter."),
+            ("applicant_age", "Tahap hidup pemohon, berkaitan dengan tenor dan besar pinjaman."),
+            ("income_band", "Kapasitas membayar, kandidat antecedent paling langsung."),
+        ]),
+        ("Karakteristik loan", [
+            ("loan_type", "Membedakan jalur Conventional, FHA, VA, dan RHS yang aturannya berbeda."),
+            ("loan_purpose", "Beli, refinance, atau renovasi punya standar underwriting berbeda."),
+            ("lien_status", "Lien pertama atau kedua menentukan prioritas klaim."),
+            ("preapproval", "Menandai tahap proses; terbukti jadi antecedent origination terkuat."),
+            ("conforming_loan_limit", "Menentukan apakah loan bisa dijual ke GSE."),
+            ("loan_amount_band", "Ukuran pinjaman sebagai kandidat kombinasi dengan DTI."),
+        ]),
+        ("Properti dan agunan", [
+            ("occupancy_type", "Rumah utama, kedua, atau investasi punya risiko berbeda."),
+            ("construction_method", "Site-built vs manufactured; terbukti jadi antecedent penolakan kuat."),
+            ("total_units", "Membedakan hunian tunggal dari multifamily."),
+            ("property_value_band", "Nilai agunan sebagai penyeimbang besar pinjaman."),
+            ("cltv_band", "Leverage terhadap agunan, ambangnya sudah baku di domain."),
+        ]),
+        ("Beban utang", [
+            ("debt_to_income_ratio", "Sudah ordinal dari HMDA. Terbukti jadi antecedent terkuat dengan lift 3,96."),
+        ]),
+        ("Konteks lingkungan", [
+            ("tract_income_cat", "Tingkat pendapatan wilayah menurut klasifikasi FFIEC."),
+            ("tract_minority_cat", "Dipakai untuk menguji apakah konteks lingkungan muncul di aturan."),
+        ]),
     ]
     df = pd.DataFrame(
-        [
-            {
-                "Kelompok": g,
-                "Fitur": f,
-                "Perlakuan": (
-                    "sudah band, dipakai apa adanya"
-                    if f.endswith(("_band", "_cat")) or f == "debt_to_income_ratio"
-                    else "kategorikal, dipakai apa adanya"
-                ),
-            }
-            for g, feats in groups
-            for f in feats
-        ]
+        [{"Kelompok": g, "Fitur": f, "Kenapa dipilih": r,
+          "Perlakuan": ("sudah band, dipakai apa adanya"
+                        if f.endswith(("_band", "_cat")) or f == "debt_to_income_ratio"
+                        else "kategorikal, dipakai apa adanya")}
+         for g, feats in groups for f, r in feats]
     )
     return html.Details(
         [
@@ -4348,20 +4350,30 @@ WHY_ANOMALY_FEATS = [
 def _anomaly_features_details():
     """Collapsible feature list for the anomaly matrix, mirroring the Fase 2 and 3 blocks."""
     feats = [
-        ("income", "magnitudo finansial pemohon"),
-        ("loan_amount", "magnitudo pinjaman"),
-        ("property_value", "magnitudo agunan"),
-        ("combined_loan_to_value_ratio", "rasio leverage"),
-        ("loan_term", "tenor pinjaman"),
-        ("tract_minority_population_percent", "konteks lingkungan"),
-        ("tract_to_msa_income_percentage", "konteks lingkungan"),
-        ("ffiec_msa_md_median_family_income", "konteks wilayah"),
+        ("income",
+         "Income $10 juta atau bernilai negatif harus terlihat. Nilai asli dipertahankan justru "
+         "karena ekstremnya yang dicari."),
+        ("loan_amount",
+         "Magnitudo pinjaman. Sengaja tidak dipakai di clustering karena tumpang tindih dengan "
+         "CLTV, tetapi di sini justru wajib."),
+        ("property_value",
+         "Magnitudo agunan. Property value $800 juta adalah kandidat anomali paling jelas."),
+        ("combined_loan_to_value_ratio",
+         "Rasio leverage. CLTV di atas 100% menandakan kemungkinan ketidakkonsistenan aritmetika."),
+        ("loan_term",
+         "Tenor di luar kelipatan lazim seperti 180 atau 360 bulan patut diperiksa."),
+        ("tract_minority_population_percent",
+         "Konteks lingkungan, dipakai agar LOF bisa menilai kewajaran relatif terhadap tetangga."),
+        ("tract_to_msa_income_percentage",
+         "Posisi ekonomi wilayah, melengkapi konteks untuk deteksi kontekstual."),
+        ("ffiec_msa_md_median_family_income",
+         "Pendapatan median wilayah sebagai pembanding kewajaran income pemohon."),
     ]
     df = pd.DataFrame(
         [
             {
                 "Fitur": f,
-                "Peran": r,
+                "Kenapa dipilih": r,
                 "Perlakuan": "nilai asli tanpa winsorize, lalu RobustScaler",
             }
             for f, r in feats
